@@ -4,6 +4,9 @@
 //   /api/probe?code=ADMIN_CODE&what=greysheet-spec
 //   /api/probe?code=ADMIN_CODE&what=greysheet&path=GetNodeRequest&NodeId=1
 
+import { numistaLookup } from '../lib/numista.js';
+import { greysheetPricing } from '../lib/greysheet.js';
+
 const env = (...names) => {
   for (const n of names) {
     const k = Object.keys(process.env).find((key) => key.trim().toUpperCase() === n);
@@ -72,6 +75,16 @@ export default async function handler(req, res) {
       }
       const ui = await get(h + '/swagger-ui', {});
       if (ui.status === 200 && typeof ui.body === 'string') out.tried.push(`200 ${h}/swagger-ui (html) ${ui.body.slice(0, 200)}`);
+    }
+  } else if (what === 'lookup') {
+    // Full pipeline test, e.g. &country=United States&year=1921&mint_mark=S&denomination=1 Dollar&series=Morgan Dollar&pcgs=7300
+    const q = req.query;
+    const coin = { country: q.country, year: q.year, mint_mark: q.mint_mark, denomination: q.denomination, series: q.series, numista_query: q.numista_query || q.series };
+    try { out.numista = await numistaLookup(coin); } catch (e) { out.numista = { error: String(e.message || e) }; }
+    try { out.greysheet = await greysheetPricing({ pcgs: q.pcgs }, { owner: true }); } catch (e) { out.greysheet = { error: String(e.message || e) }; }
+    if (q.raw === '1' && q.pcgs) {
+      const r = await get(`${GS_BASE}/GetPricingRequest?PcgsNumber=${encodeURIComponent(q.pcgs)}&ApiLevel=advanced`, { 'x-api-key': GS_KEY, 'x-api-token': GS_TOKEN, Accept: 'application/json' });
+      out.greysheet_raw = { status: r.status, body: trim(r.body) };
     }
   } else if (what === 'greysheet') {
     const path = String(req.query.path || 'GetNodeRequest').replace(/[^A-Za-z0-9_/-]/g, '');

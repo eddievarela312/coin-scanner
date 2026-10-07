@@ -25,6 +25,9 @@ Reply with only this JSON object:
  "mint_mark": "letter, or \"None\", or \"\" if unreadable",
  "mint_name": "e.g. San Francisco",
  "km_number": "Krause KM# if known, else \"\"",
+ "series": "e.g. Morgan Dollar, Libertad, Walking Liberty Half",
+ "numista_query": "2-4 words that appear in the coin's Numista catalog title, e.g. \"Morgan Dollar\" or \"Onza Libertad\"",
+ "pcgs_number": "PCGS coin number for this exact date/mint/variety ONLY if you are confident, else \"\"",
  "composition": "", "fineness": "e.g. .900", "weight_g": null, "asw_oz": null, "agw_oz": null, "diameter_mm": null, "mintage": "",
  "is_bullion_like": false,
  "grade_sensitive": false,
@@ -42,7 +45,7 @@ Rules:
 - uncertain_fields uses only: country, denomination, year, mint_mark.
 - is_bullion_like: true when value is mostly metal (90% US silver in circulated grades, modern bullion, gold bullion coins). Then suggested_grades is [] and rough_value_usd uses the key "ANY".
 - grade_sensitive: true when one grade step changes value a lot (key dates, mint-state Morgans, high-grade type coins).
-- slab: null, or {"service": "PCGS", "grade": "MS63", "cert": "", "label_text": ""}.
+- slab: null, or {"service": "PCGS", "grade": "MS63", "cert": "", "label_text": "", "pcgs_number": "", "ngc_id": ""}. On PCGS labels the coin number is printed with the cert (e.g. "7296.63/12345678": coin number 7296, grade 63). Copy numbers exactly as printed; leave "" if not readable.
 - suggested_grades: one or two adjacent grades from VG, F, VF, XF, AU, UNC.
 - candidates: 2 to 4 OTHER likely coins, including close dates, mint marks and varieties, each with a short reason.
 - rough_value_usd: approximate typical US retail ranges for the grades in question, from general knowledge, only where you have a reasonable sense; otherwise {}. These are shown to the dealer labeled as rough estimates.

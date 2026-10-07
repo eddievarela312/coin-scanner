@@ -476,6 +476,16 @@ function aiRange(coin, g, expSale) {
   const m = melt(coin, spot());
   const exp = parseFloat(expSale);
   if (exp > 0) return { low: exp, high: exp, mid: exp, basis: 'your expected sale price', grades: g, source: 'dealer' };
+  const cpg = g.map((k) => coin.cpg && coin.cpg[k]).filter((v) => v > 0);
+  if (cpg.length) {
+    const lo = Math.max(Math.min(...cpg) * 0.85, m), hi = Math.max(Math.max(...cpg), m);
+    return { low: lo, high: hi, mid: Math.round((lo + hi) / 2 * 100) / 100, basis: 'CPG retail (85–100%), via CDN', grades: g, source: 'cpg' };
+  }
+  const nv = g.map((k) => coin.numistaVal && coin.numistaVal[k]).filter((v) => v > 0);
+  if (nv.length) {
+    const lo = Math.max(Math.min(...nv), m), hi = Math.max(Math.max(...nv), m);
+    return { low: lo, high: hi, mid: Math.round((lo + hi) / 2 * 100) / 100, basis: 'Numista price estimates', grades: g, source: 'numista' };
+  }
   const parts = g.map((k) => coin.aiValue && coin.aiValue[k]).filter((v) => Array.isArray(v) && v.length === 2 && v[1] > 0);
   if (!parts.length) return null;
   const low = Math.max(Math.min(...parts.map((p) => +p[0])), m);
@@ -494,7 +504,7 @@ function analyze(coin, grades, confirmed, costInput, marginOverride, expSale) {
   const cost = parseFloat(costInput);
   const effCost = cost > 0 ? cost : tb;
   const liq = isAI ? null : liquidity(coin, spot(), range);
-  const feas = !isAI && effCost > 0 ? feasibility(coin, g, effCost, m, spot()) : null;
+  const feas = effCost > 0 && (!isAI || (range && range.source === 'cpg')) ? feasibility(coin, g, effCost, m, spot()) : null;
   return {
     isAI, margin: m, grades: g, confirmed: isConfirmed, range, targetBuy: tb, hideTarget, liq, feas,
     melt: melt(coin, spot()), cost: cost > 0 ? cost : null, effCost,
@@ -641,11 +651,12 @@ function aiMatch(c) {
   <p class="eyebrow">Match found${S.idSeconds ? ` · ${S.idSeconds}s` : ''}</p>
   <h2>${esc(c.name)}</h2>
   ${photos}
+  ${c.refImages && c.refImages.length ? `<div class="tile"><span class="eyebrow">Numista reference · ${esc(c.numista)}</span><div class="thumbs">${c.refImages.map((u) => `<img src="${esc(u)}" alt="" style="width:72px;height:72px">`).join('')}</div><span class="small muted">${esc(c.numistaTitle || '')}</span></div>` : c.lookupPending ? '<p class="small muted">Loading Numista reference images…</p>' : ''}
   ${c.slab ? `<div class="tile"><span class="eyebrow">${esc(c.slab.service || 'Slab')} slab detected</span><b>${esc(c.slab.grade || 'Grade not read')}</b>${c.slab.cert ? `<span class="small muted num">Cert # ${esc(c.slab.cert)}</span>` : ''}
     ${c.slab.service && /pcgs/i.test(c.slab.service) ? `<a class="small" href="https://www.pcgs.com/cert/${encodeURIComponent(c.slab.cert || '')}" target="_blank" rel="noopener" style="color:var(--accent)">Verify on PCGS</a>` : c.slab.service && /ngc/i.test(c.slab.service) ? `<a class="small" href="https://www.ngccoin.com/certlookup/" target="_blank" rel="noopener" style="color:var(--accent)">Verify on NGC</a>` : ''}</div>` : ''}
   ${c.uncertain.length ? `<p class="small"><span class="flag">Check:</span> ${c.uncertain.map(esc).join(', ')}</p>` : ''}
   ${c.photoFeedback ? `<p class="small muted">${esc(c.photoFeedback)}</p>` : ''}
-  <p class="small muted">Read by Claude from your photos. Numista N# and reference images appear once Numista is connected.</p>
+  <p class="small muted">Read by Claude from your photos.${c.numistaUrl ? ' Coin data from Numista.' : ''}</p>
   <button class="btn-primary btn-wide" data-a="confirmMatch">Yes, this is it</button>
   <button class="btn-ghost btn-wide" data-a="showCandidates">Not my coin</button>`;
 }
@@ -701,7 +712,8 @@ screens.money = () => {
     ${c.skipGrade ? '<span class="pill neutral">Bullion pricing</span>' : `<button class="btn-link" data-a="go" data-s="grade">${a.confirmed ? `${gradeTxt} · Change` : `${gradeTxt} suggested · Confirm`}</button>`}</div>
   ${S.added ? `<div class="toast">Added to Purchase #${S.purchase.no} · ${S.purchase.items.length} coin${S.purchase.items.length === 1 ? '' : 's'}</div>` : ''}
   <h2>${esc(c.name)}</h2>
-  ${a.isAI && (!a.range || a.range.source === 'ai') ? `<div class="banner">Value below is ${a.range ? 'Claude\'s rough estimate, not market data' : 'missing'}. Enter your expected sale price for real numbers. Greysheet and Numista sales replace this once connected.</div>` : ''}
+  ${a.isAI && (!a.range || a.range.source === 'ai') && !c.lookupPending ? `<div class="banner">Value below is ${a.range ? 'Claude\'s rough estimate, not market data' : 'missing'}: no CPG or Numista price found for this coin. Enter your expected sale price for real numbers.</div>` : ''}
+  ${c.lookupPending ? '<p class="small muted">Checking Numista and Greysheet…</p>' : ''}
 
   <div class="card">
     <span class="eyebrow">Estimated market</span>
@@ -720,12 +732,13 @@ screens.money = () => {
   <div class="grid3">
     <div class="tile"><span class="eyebrow">Melt</span><b class="num">${money(a.melt)}</b></div>
     ${a.isAI
-      ? `<div class="tile"><span class="eyebrow">CPG</span><span class="small muted">Connects with Greysheet</span></div>`
+      ? `<div class="tile"><span class="eyebrow">CPG</span>${a.cpg.length ? `<b class="num">${a.cpg.map(money).join('–')}</b><a class="small" href="https://www.greysheet.com" target="_blank" rel="noopener" style="color:var(--accent)">via CDN</a>` : `<span class="small muted">${c.lookupPending ? 'Loading…' : c.gsMismatch ? 'No exact match' : 'Not found'}</span>`}</div>`
       : `<div class="tile"><span class="eyebrow">CPG</span><b class="num">${a.cpg.length ? a.cpg.map(money).join('–') : '—'}</b>
       <a class="small" href="https://www.greysheet.com" target="_blank" rel="noopener" style="color:var(--accent)">via CDN</a></div>`}
     <button class="tile" data-a="go" data-s="sales" style="border:0;min-height:0;font-weight:400;color:var(--ink);text-align:left;justify-content:flex-start;align-items:stretch"><span class="eyebrow">Sales ›</span><b class="num">${a.isAI ? '<span class="small">eBay · PCGS</span>' : salesRange(c, a.grades)}</b></button>
   </div>
 
+  ${greyLine(c, a)}
   <div class="card" id="calc">${calcInner(c, a)}</div>
 
   ${a.liq ? liquidityBlock(a.liq) : `<div class="card"><div class="row between"><span class="eyebrow">Liquidity · beta</span><span class="pill neutral">Needs sales data</span></div><p class="small muted">Turns on when Numista sales records are connected. Try a sample coin to see it working.</p></div>`}
@@ -737,6 +750,14 @@ screens.money = () => {
     <span class="small muted">${S.feedback ? 'Thanks, noted.' : `Correct ID? <button class="btn-link small" data-a="fb" data-v="yes">Yes</button> · <button class="btn-link small" data-a="fb" data-v="no">No</button>`}</span>
   </div>`;
 };
+
+// Greysheet wholesale is internal-use only: shown only when the owner code is set on this phone.
+function greyLine(c, a) {
+  if (!c.grey || !store.get('cs.admin', '')) return '';
+  const v = a.grades.map((k) => c.grey[k]).filter((x) => x > 0);
+  if (!v.length) return '';
+  return `<div class="tile"><span class="eyebrow">Greysheet wholesale · only you see this</span><b class="num">${v.map(money).join('–')}</b></div>`;
+}
 
 function salesRange(coin, grades) {
   const p = coin.sales.filter((s) => grades.includes(s.grade)).map((s) => s.price);
@@ -787,7 +808,7 @@ screens.details = () => {
   <div class="topbar"><button class="back" data-a="go" data-s="money">Back</button></div>
   <h2>${esc(c.name)}</h2>
   <div class="card"><table><tbody>${rows.map(([k, v]) => `<tr><th>${k}</th><td class="num">${esc(v)}</td></tr>`).join('')}</tbody></table>
-  <p class="small muted">${c.source === 'ai' ? 'Specs read by Claude from memory. Verify before relying on them; Numista supplies verified specs once connected.' : 'Specs: Numista (sample values in this prototype).'}</p></div>`;
+  <p class="small muted">${c.source === 'ai' ? (c.numistaUrl ? `Specs from Numista: <a href="${esc(c.numistaUrl)}" target="_blank" rel="noopener" style="color:var(--accent)">${esc(c.numista)}</a>.${c.gsName ? ` Pricing matched to Greysheet: ${esc(c.gsName)}.` : ''}` : 'Specs read by Claude from memory; no Numista match found. Verify before relying on them.') : 'Specs: Numista (sample values in this prototype).'}</p></div>`;
 };
 
 screens.purchase = () => {
@@ -898,6 +919,10 @@ screens.settings = () => `
     </div>
     <p class="small muted">Live version pulls spot from metals.dev every few minutes.</p>
   </div>
+  <div class="card">
+    <label class="field" for="adm">Owner code (optional)<input id="adm" type="text" autocomplete="off" autocapitalize="off" value="${esc(store.get('cs.admin', ''))}"></label>
+    <p class="small muted">Your admin code. On this phone only, it shows Greysheet wholesale values. Never give it to testers.</p>
+  </div>
   <button class="btn-primary btn-wide" data-a="saveSettings">Save</button>`;
 
 /* ---------- render ---------- */
@@ -946,6 +971,70 @@ function blobToBase64(b) {
     r.readAsDataURL(b);
   });
 }
+/* ---------- verified data: Numista specs + Greysheet CPG ---------- */
+const BUCKET = (n) => n >= 60 ? 'UNC' : n >= 50 ? 'AU' : n >= 40 ? 'XF' : n >= 20 ? 'VF' : n >= 12 ? 'F' : n >= 8 ? 'VG' : null;
+const NUMISTA_GRADE = { vg: 'VG', f: 'F', vf: 'VF', xf: 'XF', ef: 'XF', au: 'AU', unc: 'UNC', bu: 'UNC' };
+
+function mergeLookup(coin, L) {
+  if (!coin || !L) return;
+  coin.lookup = L;
+  const n = L.numista;
+  if (n && n.matched) {
+    coin.numista = `N# ${n.id}`; coin.numistaUrl = n.url; coin.numistaTitle = n.title;
+    if (n.km) coin.km = n.km;
+    if (n.composition) coin.composition = n.composition;
+    if (n.weight_g) coin.weight = n.weight_g + ' g';
+    if (n.size_mm) coin.diameter = n.size_mm + ' mm';
+    if (n.issue && n.issue.mintage) coin.mintage = Number(n.issue.mintage).toLocaleString('en-US');
+    coin.refImages = [n.obverse_thumb, n.reverse_thumb].filter(Boolean);
+    // Recompute precious-metal content from Numista weight + fineness when both are clear.
+    const fm = String(n.composition || '').match(/(?:0?\.(\d{3,4}))|(\b9\d{2}\b)/);
+    const fine = fm ? parseFloat(fm[1] ? '0.' + fm[1] : '0.' + fm[2]) : null;
+    if (n.weight_g && fine && fine > 0.3 && fine <= 1) {
+      const pure = Math.round(n.weight_g * fine / 31.1035 * 10000) / 10000;
+      if (/gold/i.test(n.composition)) { coin.agw = pure; coin.asw = null; }
+      else if (/silver/i.test(n.composition)) { coin.asw = pure; coin.agw = null; }
+    }
+    const nv = {};
+    for (const p of n.prices || []) { const g = NUMISTA_GRADE[String(p.grade).toLowerCase()]; if (g) nv[g] = Math.max(nv[g] || 0, p.price); }
+    coin.numistaVal = nv;
+  }
+  const g = L.greysheet;
+  if (g && g.prices && g.prices.length && g.name_check !== false) {
+    coin.gsName = g.name; coin.gsid = g.gsid; coin.pcgs = g.pcgs;
+    const by = {}, grey = {};
+    for (const r of g.prices) {
+      const b = BUCKET(r.grade || parseInt(String(r.label || '').replace(/\D/g, ''), 10) || 0);
+      if (!b) continue;
+      if (r.cpg) (by[b] = by[b] || []).push(r.cpg);
+      if (r.grey) (grey[b] = grey[b] || []).push(r.grey);
+    }
+    coin.cpg = Object.fromEntries(Object.entries(by).map(([k, v]) => [k, median(v)]));
+    coin.cpgRange = Object.fromEntries(Object.entries(by).map(([k, v]) => [k, [Math.min(...v), Math.max(...v)]]));
+    const allCpg = g.prices.map((r) => r.cpg).filter(Boolean);
+    if (allCpg.length) coin.cpg.ANY = Math.min(...allCpg);
+    coin.grey = Object.fromEntries(Object.entries(grey).map(([k, v]) => [k, median(v)]));
+  } else if (g && g.prices && g.name_check === false) {
+    coin.gsMismatch = g.name;
+  }
+}
+
+async function fetchLookup(coin, raw) {
+  if (!SERVER_MODE) return;
+  coin.lookupPending = true;
+  try {
+    const res = await fetch('/api/lookup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Access-Code': store.get('cs.code', ''), 'X-Admin-Code': store.get('cs.admin', '') },
+      body: JSON.stringify({ coin: raw }),
+    });
+    const L = await res.json().catch(() => null);
+    if (res.ok && L) mergeLookup(coin, L);
+  } catch (_) {}
+  coin.lookupPending = false;
+  if (S.coin === coin && ['fields', 'match', 'grade', 'money', 'details'].includes(S.screen)) render();
+}
+
 function sendFeedback(patch) {
   if (!SERVER_MODE || !patch.scan_id) return;
   fetch('/api/feedback', {
@@ -984,6 +1073,9 @@ Reply with only this JSON object:
  "mint_mark": "letter, or \"None\", or \"\" if unreadable",
  "mint_name": "e.g. San Francisco",
  "km_number": "Krause KM# if known, else \"\"",
+ "series": "e.g. Morgan Dollar, Libertad, Walking Liberty Half",
+ "numista_query": "2-4 words that appear in the coin's Numista catalog title, e.g. \"Morgan Dollar\" or \"Onza Libertad\"",
+ "pcgs_number": "PCGS coin number for this exact date/mint/variety ONLY if you are confident, else \"\"",
  "composition": "", "fineness": "e.g. .900", "weight_g": null, "asw_oz": null, "agw_oz": null, "diameter_mm": null, "mintage": "",
  "is_bullion_like": false,
  "grade_sensitive": false,
@@ -1001,7 +1093,7 @@ Rules:
 - uncertain_fields uses only: country, denomination, year, mint_mark.
 - is_bullion_like: true when value is mostly metal (90% US silver in circulated grades, modern bullion, gold bullion coins). Then suggested_grades is [] and rough_value_usd uses the key "ANY".
 - grade_sensitive: true when one grade step changes value a lot (key dates, mint-state Morgans, high-grade type coins).
-- slab: null, or {"service": "PCGS", "grade": "MS63", "cert": "", "label_text": ""}.
+- slab: null, or {"service": "PCGS", "grade": "MS63", "cert": "", "label_text": "", "pcgs_number": "", "ngc_id": ""}. On PCGS labels the coin number is printed with the cert (e.g. "7296.63/12345678": coin number 7296, grade 63). Copy numbers exactly as printed; leave "" if not readable.
 - suggested_grades: one or two adjacent grades from VG, F, VF, XF, AU, UNC.
 - candidates: 2 to 4 OTHER likely coins, including close dates, mint marks and varieties, each with a short reason.
 - rough_value_usd: approximate typical US retail ranges for the grades in question, from general knowledge, only where you have a reasonable sense; otherwise {}. These are shown to the dealer labeled as rough estimates.
@@ -1099,6 +1191,7 @@ async function runIdentify(hints, opts = {}) {
       return go('idfail');
     }
     S.coin = coinFromAI(r);
+    fetchLookup(S.coin, r);
     S.fields = { country: S.coin.country, denomination: S.coin.denomination, year: S.coin.year, mint: S.coin.mint };
     S.expSale = ''; S.cost = ''; S.candidates = false; S.manual = false;
     S.log.push({ at: new Date().toISOString(), hints: hints || '', result: r.coin_name, confidence: r.confidence, seconds: S.idSeconds });
@@ -1226,6 +1319,7 @@ document.addEventListener('click', (e) => {
     if (v('ss') > 0) S.settings.spot.silver = v('ss');
     if (v('sg') > 0) S.settings.spot.gold = v('sg');
     S.settings.spot.asOf = 'Sample spot, edited';
+    const admEl = document.getElementById('adm'); if (admEl) store.set('cs.admin', admEl.value.trim());
     save(); return go(prevScreen);
   }
 });
