@@ -483,8 +483,9 @@ function aiRange(coin, g, expSale) {
   }
   const nv = g.map((k) => coin.numistaVal && coin.numistaVal[k]).filter((v) => v > 0);
   if (nv.length) {
-    const lo = Math.max(Math.min(...nv), m), hi = Math.max(Math.max(...nv), m);
-    return { low: lo, high: hi, mid: Math.round((lo + hi) / 2 * 100) / 100, basis: 'Numista price estimates', grades: g, source: 'numista' };
+    const lows = g.map((k) => coin.numistaLow && coin.numistaLow[k]).filter((v) => v > 0 && v < Infinity);
+    const lo = Math.max(Math.min(...(lows.length ? lows : nv)), m), hi = Math.max(Math.max(...nv), m);
+    return { low: lo, high: hi, mid: Math.round((lo + hi) / 2 * 100) / 100, basis: coin.varieties ? 'Numista price estimates, covering all varieties of this year' : 'Numista price estimates', grades: g, source: 'numista' };
   }
   const parts = g.map((k) => coin.aiValue && coin.aiValue[k]).filter((v) => Array.isArray(v) && v.length === 2 && v[1] > 0);
   if (!parts.length) return null;
@@ -654,6 +655,7 @@ function aiMatch(c) {
   ${c.refImages && c.refImages.length ? `<div class="tile"><span class="eyebrow">Numista reference · ${esc(c.numista)}</span><div class="thumbs">${c.refImages.map((u) => `<img src="${esc(u)}" alt="" style="width:72px;height:72px">`).join('')}</div><span class="small muted">${esc(c.numistaTitle || '')}</span></div>` : c.lookupPending ? '<p class="small muted">Loading Numista reference images…</p>' : ''}
   ${c.slab ? `<div class="tile"><span class="eyebrow">${esc(c.slab.service || 'Slab')} slab detected</span><b>${esc(c.slab.grade || 'Grade not read')}</b>${c.slab.cert ? `<span class="small muted num">Cert # ${esc(c.slab.cert)}</span>` : ''}
     ${c.slab.service && /pcgs/i.test(c.slab.service) ? `<a class="small" href="https://www.pcgs.com/cert/${encodeURIComponent(c.slab.cert || '')}" target="_blank" rel="noopener" style="color:var(--accent)">Verify on PCGS</a>` : c.slab.service && /ngc/i.test(c.slab.service) ? `<a class="small" href="https://www.ngccoin.com/certlookup/" target="_blank" rel="noopener" style="color:var(--accent)">Verify on NGC</a>` : ''}</div>` : ''}
+  ${c.varieties ? `<p class="small"><span class="flag">Variety:</span> Numista lists ${c.varieties.length} varieties for this year (${c.varieties.map(esc).join(' / ')}). Prices cover all of them until you confirm which.</p>` : ''}
   ${c.uncertain.length ? `<p class="small"><span class="flag">Check:</span> ${c.uncertain.map(esc).join(', ')}</p>` : ''}
   ${c.photoFeedback ? `<p class="small muted">${esc(c.photoFeedback)}</p>` : ''}
   <p class="small muted">Read by Claude from your photos.${c.numistaUrl ? ' Coin data from Numista.' : ''}</p>
@@ -731,7 +733,7 @@ screens.money = () => {
   </div>
 
   <div class="grid3">
-    <div class="tile"><span class="eyebrow">Melt</span><b class="num">${money(a.melt)}</b></div>
+    <div class="tile"><span class="eyebrow">Melt</span>${a.melt > 0 ? `<b class="num">${money(a.melt)}</b>` : '<span class="small muted">No silver or gold</span>'}</div>
     ${a.isAI
       ? `<div class="tile"><span class="eyebrow">CPG</span>${a.cpg.length ? `<b class="num">${a.cpg.map(money).join('–')}</b><a class="small" href="https://www.greysheet.com" target="_blank" rel="noopener" style="color:var(--accent)">via CDN</a>` : `<span class="small muted">${c.lookupPending ? 'Loading…' : c.gsMismatch ? 'No exact match' : 'Not found'}</span>`}</div>`
       : `<div class="tile"><span class="eyebrow">CPG</span><b class="num">${a.cpg.length ? a.cpg.map(money).join('–') : '—'}</b>
@@ -995,7 +997,8 @@ function mergeLookup(coin, L) {
     if (n.weight_g) coin.weight = n.weight_g + ' g';
     if (n.size_mm) coin.diameter = n.size_mm + ' mm';
     if (n.issue && n.issue.mintage) coin.mintage = Number(n.issue.mintage).toLocaleString('en-US');
-    coin.refImages = [n.obverse_thumb, n.reverse_thumb].filter(Boolean);
+    coin.refImages = [n.obverse_thumb, n.reverse_thumb].filter(Boolean).map((u) => '/api/img?u=' + encodeURIComponent(u));
+    coin.varieties = n.issue && n.issue.varieties ? n.issue.varieties : null;
     // Recompute precious-metal content from Numista weight + fineness when both are clear.
     const fm = String(n.composition || '').match(/(?:0?\.(\d{3,4}))|(\b9\d{2}\b)/);
     const fine = fm ? parseFloat(fm[1] ? '0.' + fm[1] : '0.' + fm[2]) : null;
@@ -1004,9 +1007,13 @@ function mergeLookup(coin, L) {
       if (/gold/i.test(n.composition)) { coin.agw = pure; coin.asw = null; }
       else if (/silver/i.test(n.composition)) { coin.asw = pure; coin.agw = null; }
     }
-    const nv = {};
-    for (const p of n.prices || []) { const g = NUMISTA_GRADE[String(p.grade).toLowerCase()]; if (g) nv[g] = Math.max(nv[g] || 0, p.price); }
-    coin.numistaVal = nv;
+    const nv = {}, nvLow = {};
+    for (const p of n.prices || []) {
+      const g = NUMISTA_GRADE[String(p.grade).toLowerCase()]; if (!g) continue;
+      nv[g] = Math.max(nv[g] || 0, p.price);
+      nvLow[g] = Math.min(nvLow[g] || Infinity, p.low || p.price);
+    }
+    coin.numistaVal = nv; coin.numistaLow = nvLow;
   }
   const g = L.greysheet;
   if (g && g.prices && g.prices.length && g.name_check !== false) {
