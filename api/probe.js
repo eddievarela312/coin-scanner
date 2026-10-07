@@ -5,7 +5,7 @@
 //   /api/probe?code=ADMIN_CODE&what=greysheet&path=GetNodeRequest&NodeId=1
 
 import { numistaLookup } from '../lib/numista.js';
-import { greysheetPricing } from '../lib/greysheet.js';
+import { greysheetPricing, greysheetFind } from '../lib/greysheet.js';
 
 const env = (...names) => {
   for (const n of names) {
@@ -82,6 +82,7 @@ export default async function handler(req, res) {
     const coin = { country: q.country, year: q.year, mint_mark: q.mint_mark, denomination: q.denomination, series: q.series, numista_query: q.numista_query || q.series };
     try { out.numista = await numistaLookup(coin); } catch (e) { out.numista = { error: String(e.message || e) }; }
     try { out.greysheet = await greysheetPricing({ pcgs: q.pcgs }, { owner: true }); } catch (e) { out.greysheet = { error: String(e.message || e) }; }
+    try { out.greysheet_catalog = await greysheetFind({ ...coin, km_number: q.km || '' }, { owner: true }); } catch (e) { out.greysheet_catalog = { error: String(e.message || e) }; }
     if (q.raw === '1' && q.pcgs) {
       const r = await get(`${GS_BASE}/GetPricingRequest?PcgsNumber=${encodeURIComponent(q.pcgs)}&ApiLevel=advanced`, { 'x-api-key': GS_KEY, 'x-api-token': GS_TOKEN, Accept: 'application/json' });
       out.greysheet_raw = { status: r.status, body: trim(r.body) };
