@@ -503,7 +503,11 @@ const RARITY = { key: 'Key date', 'semi-key': 'Semi-key date', variety: 'Check f
 function rarityOf(c) {
   if (!c) return null;
   if (c.rarity && RARITY[c.rarity.level]) return c.rarity;
-  const n = parseInt(String(c.mintage || '').replace(/[^0-9]/g, ''), 10);
+  const n = c.issueMintage || parseInt(String(c.mintage || '').replace(/[^0-9]/g, ''), 10);
+  const st = c.seriesStats;
+  if (!c.skipGrade && n > 0 && st && st.withMintage >= 3 && (n <= st.median * 0.35 || n === st.min)) {
+    return { level: 'scarce', note: `${n === st.min ? 'Lowest mintage in this series' : 'Low mintage for this series'}: ${n.toLocaleString('en-US')} minted vs about ${st.median.toLocaleString('en-US')} for a typical date.`, check: 'Common dates of this type may be priced lower; check comps for this date.' };
+  }
   if (!c.skipGrade && n > 0 && n < 50000) return { level: 'lowmintage', note: `Only ${n.toLocaleString('en-US')} minted.`, check: '' };
   return null;
 }
@@ -892,6 +896,7 @@ screens.money = () => {
       <input id="expsale" type="number" inputmode="decimal" min="0" step="0.01" value="${esc(S.expSale)}"></label>` : ''}
   </div>`}
 
+  ${priceCheck(c, a)}
   <div class="card">
     <span class="eyebrow">Target buy</span>
     ${a.hideTarget
@@ -918,10 +923,7 @@ screens.money = () => {
     </div>
   </details>
 
-  <div class="row between">
-    <button class="btn-link" data-a="go" data-s="details">Coin details ›</button>
-    <button class="btn-link" data-a="go" data-s="sales">More sold prices ›</button>
-  </div>
+  <button class="btn-link" data-a="go" data-s="details" style="align-self:flex-start">Coin details ›</button>
   <p class="small muted" style="text-align:center">${S.feedback ? 'Thanks, noted.' : `Correct ID? <button class="btn-link small" data-a="fb" data-v="yes">Yes</button> · <button class="btn-link small" data-a="fb" data-v="no">No</button>`}</p>`;
 };
 
@@ -931,6 +933,21 @@ function ebayUrl(c) {
   if (c.slab && c.slab.service && c.slab.grade) q += ` ${c.slab.service} ${c.slab.grade}`;
   q = q.replace(/\s+/g, ' ').trim() + ' -lot -replica -copy -reproduction';
   return `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(q)}&_sacat=11116&LH_Sold=1&LH_Complete=1&_sop=13`;
+}
+// When catalog prices and Claude's date-specific estimate disagree a lot, say so instead of hiding it.
+function priceCheck(c, a) {
+  if (!a.range || a.limited || a.range.source === 'dealer' || !c.aiValue) return '';
+  const parts = a.grades.map((k) => c.aiValue[k]).filter((v) => Array.isArray(v) && v.length === 2 && v[1] > 0);
+  if (!parts.length) return '';
+  const lo = Math.min(...parts.map((p) => +p[0])), hi = Math.max(...parts.map((p) => +p[1]));
+  const src = a.range.source === 'cpg' ? 'CPG' : 'Numista';
+  const input = `<label class="field" for="expsale">Know what it sells for? Use your number
+      <input id="expsale" type="number" inputmode="decimal" min="0" step="0.01" placeholder="Your expected sale price" value="${esc(S.expSale)}"></label>`;
+  if (lo > a.range.high * 1.4) return `<div class="feas warn"><b>Prices disagree: this date may be worth more</b>
+    <span class="small">Claude expects about ${money(lo)}–${money(hi)} for this exact date. The ${src} figure may be pricing it like a common date. Check eBay sold comps before you buy or sell.</span>${input}</div>`;
+  if (hi < a.range.low * 0.6) return `<div class="feas warn"><b>Prices disagree: this may be worth less</b>
+    <span class="small">Claude expects about ${money(lo)}–${money(hi)}, below the ${src} figure. Check eBay sold comps before paying the target buy.</span>${input}</div>`;
+  return '';
 }
 function compsButton(c) {
   return `<a class="btn btn-wide comps" href="${ebayUrl(c)}" target="_blank" rel="noopener"><span>See eBay sold comps</span><span aria-hidden="true">↗</span></a>`;
@@ -1020,8 +1037,7 @@ screens.sales = () => {
     <thead><tr><th>Date</th><th>Grade</th><th class="r">Price</th></tr></thead>
     <tbody>${c.sales.map((x) => `<tr class="${a.grades.includes(x.grade) ? 'hl' : ''}"><td class="num">${x.date}</td><td>${x.grade === 'ANY' ? '—' : x.grade}</td><td class="r num">${money(x.price)}</td></tr>`).join('')}</tbody>
   </table></div><p class="small muted">Sample sales for the demo coin.</p></div>` : ''}
-  <a class="btn btn-ghost btn-wide" href="https://www.pcgs.com/auctionprices" target="_blank" rel="noopener">PCGS auction results ↗</a>
-  <p class="small muted">Best for slabbed coins. Search the coin by name on the PCGS page.</p>`;
+`;
 };
 
 screens.details = () => {
@@ -1453,6 +1469,8 @@ function mergeLookup(coin, L) {
     if (n.weight_g) coin.weight = n.weight_g + ' g';
     if (n.size_mm) coin.diameter = n.size_mm + ' mm';
     if (n.issue && n.issue.mintage) coin.mintage = Number(n.issue.mintage).toLocaleString('en-US');
+    coin.issueMintage = n.issue && +n.issue.mintage > 0 ? +n.issue.mintage : null;
+    coin.seriesStats = n.series || null;
     coin.refImages = null; // Numista blocks embedding its member photos; link to the Numista page instead
     coin.varieties = n.issue && n.issue.varieties ? n.issue.varieties : null;
     // Numista says no silver or gold: there is no melt value, whatever Claude guessed.
