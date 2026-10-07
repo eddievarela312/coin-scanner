@@ -337,10 +337,6 @@ function purchaseTotals(items, margin, lotOffer) {
     profitMid, profitLow, profitHigh, marginMid, requiredSell, status, liquidity: liq, allocated };
 }
 
-if (typeof module !== 'undefined') {
-  module.exports = { GRADES, melt, marketForGrade, marketRange, targetBuy, liquidity,
-    feasibility, maxMarginAt, purchaseTotals, percentile, median };
-}
 
 // SAMPLE DATA ONLY. Prices and sales are invented placeholders for the prototype.
 // Specs (weight, fineness, ASW/AGW) are approximate. Live data replaces all of this
@@ -439,7 +435,6 @@ const SAMPLE_COINS = [
   },
 ];
 
-if (typeof module !== 'undefined') module.exports = { SAMPLE_SPOT, SAMPLE_COINS };
 
 
 /* ---------- state ---------- */
@@ -452,9 +447,44 @@ const S = {
   cost: '', expSale: '', added: false, candidates: false, feedback: null, confirmClear: false,
   files: {}, ai: null, idError: '', idSeconds: 0, idUnavailable: false, manual: false, log: [],
   settings: store.get('cs.settings', { marginNumis: 0.25, marginBullion: 0.05, spot: { ...SAMPLE_SPOT } }),
-  purchase: store.get('cs.purchase', { no: 1, items: [], lotOffer: '', lotMargin: null }),
+  lots: (() => {
+    const L = store.get('cs.lots', null);
+    if (Array.isArray(L) && L.length) return L;
+    const p = store.get('cs.purchase', { no: 1, items: [], lotOffer: '', lotMargin: null });
+    return [{ id: 'lot1', name: 'Lot 1', notes: '', status: 'considering', asking: '', ...p, no: p.no || 1 }];
+  })(),
+  history: store.get('cs.history', []),
 };
-const save = () => { store.set('cs.settings', S.settings); store.set('cs.purchase', S.purchase); };
+S.purchase = S.lots.find((l) => l.id === store.get('cs.activeLot', '')) || S.lots[0];
+if (!S.settings.fee) S.settings.fee = { channel: 'none', pct: 0, fixed: 0 };
+const save = () => { store.set('cs.settings', S.settings); store.set('cs.lots', S.lots); store.set('cs.activeLot', S.purchase.id); store.set('cs.history', S.history); };
+
+/* ---------- selling fees (optional, set once in settings) ---------- */
+const FEE_PRESETS = { none: { pct: 0, fixed: 0 }, ebay: { pct: 13.25, fixed: 0.40 }, whatnot: { pct: 10.9, fixed: 0.30 } };
+const FEE_NAMES = { ebay: 'eBay', whatnot: 'Whatnot', custom: 'selling' };
+const feeOn = () => S.settings.fee && S.settings.fee.channel !== 'none';
+const feeOf = (sale) => feeOn() && sale > 0 ? sale * (+S.settings.fee.pct || 0) / 100 + (+S.settings.fee.fixed || 0) : 0;
+const feeNote = () => feeOn() ? `after ${FEE_NAMES[S.settings.fee.channel] || 'selling'} fees` : '';
+
+/* ---------- lots ---------- */
+function newLot() {
+  const n = S.lots.reduce((m, l) => Math.max(m, l.no || 0), 0) + 1;
+  const lot = { id: 'lot' + Date.now(), no: n, name: 'Lot ' + n, notes: '', status: 'considering', asking: '', items: [], lotOffer: '', lotMargin: null };
+  S.lots.unshift(lot); S.purchase = lot; save(); return lot;
+}
+
+/* ---------- scan history (on this phone) ---------- */
+function recordHistory() {
+  const c = S.coin;
+  if (!c || c.source === 'quick') return;
+  const { lookup, lookupPending, ...coin } = c;
+  const entry = { id: c.id, at: S.histAt || Date.now(), name: c.name, coin, grades: [...(S.grades || [])], confirmed: S.confirmed, expSale: S.expSale, thumb: (S.photos && S.photos.thumb) || null };
+  const i = S.history.findIndex((h) => h.id === c.id);
+  if (i >= 0) S.history[i] = { ...S.history[i], ...entry, at: S.history[i].at }; else S.history.unshift(entry);
+  S.history = S.history.slice(0, 50);
+  save();
+}
+const ago = (t) => { const m = Math.round((Date.now() - t) / 60000); return m < 1 ? 'just now' : m < 60 ? m + ' min ago' : m < 1440 ? Math.round(m / 60) + ' h ago' : Math.round(m / 1440) + ' d ago'; };
 const coinById = (id) => SAMPLE_COINS.find((c) => c.id === id);
 const marginFor = (coin) => coin.skipGrade ? S.settings.marginBullion : S.settings.marginNumis;
 const spot = () => S.settings.spot;
@@ -504,18 +534,21 @@ function analyze(coin, grades, confirmed, costInput, marginOverride, expSale) {
   let range = isQuick ? null : isAI ? aiRange(coin, g, expSale) : marketRange(coin, g, spot());
   if (isQuick) { const mv = melt(coin, spot()); range = { low: mv, high: mv, mid: mv, basis: 'melt', grades: g, source: 'melt' }; }
   const limited = isAI && (!range || range.source === 'ai');
-  const tb = limited ? null : targetBuy(range, m, isConfirmed);
+  const tbRaw = limited ? null : targetBuy(range, m, isConfirmed);
+  const feeBase = range ? (isConfirmed ? range.mid : range.low) : 0;
+  const tb = tbRaw == null ? null : Math.max(0, round2(tbRaw - feeOf(feeBase)));
   const hideTarget = coin.gradeSensitive && !isConfirmed;
   const cost = parseFloat(costInput);
   const effCost = cost > 0 ? cost : tb;
   const liq = isAI || isQuick ? null : liquidity(coin, spot(), range);
-  const feas = effCost > 0 && (!isAI || (range && range.source === 'cpg')) ? feasibility(coin, g, effCost, m, spot()) : null;
+  const fp = feeOn() ? (+S.settings.fee.pct || 0) / 100 : 0, ff = feeOn() ? (+S.settings.fee.fixed || 0) : 0;
+  const feas = effCost > 0 && (!isAI || (range && range.source === 'cpg')) ? feasibility(coin, g, effCost + ff, Math.min(0.95, m + fp), spot()) : null;
   return {
     isAI, limited, margin: m, grades: g, confirmed: isConfirmed, range, targetBuy: tb, hideTarget, liq, feas,
     melt: melt(coin, spot()), cost: cost > 0 ? cost : null, effCost,
-    profitLow: range && effCost ? range.low - effCost : null,
-    profitHigh: range && effCost ? range.high - effCost : null,
-    maxMargin: maxMarginAt(range, effCost),
+    profitLow: range && effCost ? range.low - feeOf(range.low) - effCost : null,
+    profitHigh: range && effCost ? range.high - feeOf(range.high) - effCost : null,
+    maxMargin: range && effCost ? round2((range.mid - feeOf(range.mid) - effCost) / range.mid) : null,
     targetBase: range ? (isConfirmed ? range.mid : range.low) : 0,
     cpg: g.map((k) => coin.cpg && coin.cpg[k]).filter(Boolean),
   };
@@ -524,20 +557,63 @@ function analyze(coin, grades, confirmed, costInput, marginOverride, expSale) {
 /* ---------- screens ---------- */
 const screens = {};
 
-screens.home = () => `
+screens.home = () => {
+  const recent = S.history.slice(0, 4);
+  return `
   <div class="home-hero">
     <div class="coinmark" aria-hidden="true"></div>
     <h1>Coin Scanner</h1>
-    <p class="muted">Identify. Value. Buy smarter.</p>
+    <p class="muted">Scan it. Price it. Buy it. List it.</p>
   </div>
-  <div class="banner"><b>Prototype.</b> Identification is live and reads your photos with Claude. Prices are Claude's rough estimates or your own numbers until Greysheet and Numista are connected. ${spot().live ? '' : 'Spot is a sample: set today\'s price in Margins &amp; spot.'}</div>
+  ${spot().live ? '' : `<div class="banner">Spot is a sample right now. Set today's price in Margins &amp; spot.</div>`}
   <button class="btn-primary btn-wide" data-a="scan">Scan a coin</button>
-  <button class="btn-ghost btn-wide" data-a="demo">Try the sample coins instead</button>
   <div class="grid2">
-    <button class="btn-ghost" data-a="go" data-s="purchase">Purchase${S.purchase.items.length ? ` (${S.purchase.items.length})` : ''}</button>
+    <button class="btn-ghost" data-a="go" data-s="lots">Lots${S.lots.length ? ` (${S.lots.length})` : ''}</button>
     <button class="btn-ghost" data-a="go" data-s="settings">Margins &amp; spot</button>
   </div>
-  <p class="small muted">Spot: silver ${money(spot().silver)} · gold ${money(spot().gold)} (${esc(spot().asOf)})</p>`;
+  ${recent.length ? `<div class="card"><div class="row between"><span class="eyebrow">Recent scans</span><button class="btn-link small" data-a="go" data-s="history">All ›</button></div>
+    ${recent.map((h) => histRow(h)).join('')}</div>` : ''}
+  <p class="small muted">Spot: silver ${money(spot().silver)} · gold ${money(spot().gold)} (${esc(spot().asOf)})</p>
+  <button class="btn-link small" data-a="demo">Try the sample coins</button>`;
+};
+
+function histRow(h) {
+  const a = analyze(h.coin, h.grades && h.grades.length ? h.grades : ['ANY'], h.confirmed, '', null, h.expSale);
+  const val = a.targetBuy != null ? `target ${money(a.targetBuy)}` : a.range ? range$(a.range) : 'no price';
+  return `<button class="coinrow" data-a="openHist" data-id="${esc(h.id)}" style="width:100%;background:none;border:0;border-bottom:1px solid var(--line);border-radius:0;color:var(--ink);text-align:left;font-weight:400;min-height:0;padding:10px 0">
+    ${h.thumb ? `<img src="${h.thumb}" alt="">` : '<span class="ph"></span>'}
+    <span style="min-width:0"><b style="font-weight:600">${esc(h.name)}</b><br><span class="small muted">${esc(h.coin.skipGrade ? 'Bullion' : (h.grades || []).join('–') || '')} · ${val} · ${ago(h.at)}</span></span>
+    <span aria-hidden="true">›</span></button>`;
+}
+
+screens.history = () => `
+  <div class="topbar"><button class="back" data-a="go" data-s="home">Home</button><span class="small muted">${S.history.length} saved on this phone</span></div>
+  <h2>Scan history</h2>
+  ${S.history.length ? `<div class="card">${S.history.map((h) => histRow(h)).join('')}</div>` : '<div class="card"><p class="muted">No scans yet.</p></div>'}
+  ${S.history.length ? (S.confirmClear
+    ? `<div class="confirmbox"><b>Clear scan history?</b><span class="small">Lots keep their coins. This only clears the history list on this phone.</span>
+       <div class="grid2"><button class="btn-ghost" data-a="cancelClear">Keep</button><button class="btn-primary" data-a="clearHistory" style="background:var(--bad);color:#fff">Clear</button></div></div>`
+    : '<button class="btn-ghost btn-wide" data-a="askClear">Clear history</button>') : ''}`;
+
+function lotSummary(lot) {
+  const prev = S.purchase; S.purchase = lot;
+  const T = lot.items.length ? lotTotals() : null;
+  S.purchase = prev;
+  return T;
+}
+
+screens.lots = () => `
+  <div class="topbar"><button class="back" data-a="go" data-s="home">Home</button></div>
+  <h2>Lots</h2>
+  <p class="small muted">One lot per table or seller. Keep it as Considering while you shop; mark it Bought when you buy.</p>
+  <button class="btn-primary btn-wide" data-a="newLot">+ New lot</button>
+  <div class="list">${S.lots.map((l) => {
+    const T = lotSummary(l);
+    return `<button data-a="openLot" data-id="${esc(l.id)}" style="${l.id === S.purchase.id ? 'border-color:var(--accent)' : ''}">
+      <span style="min-width:0"><b>${esc(l.name)}</b> <span class="pill ${l.status === 'bought' ? 'good' : 'neutral'}" style="margin-left:4px">${l.status === 'bought' ? 'Bought' : 'Considering'}</span><br>
+      <span class="small muted">${l.items.length} coin${l.items.length === 1 ? '' : 's'}${T ? ` · cost ${money(T.cost)} · profit ${money(T.profitMid)}` : ''}${l.notes ? ' · ' + esc(l.notes.slice(0, 40)) : ''}</span></span>
+      <span aria-hidden="true">›</span></button>`;
+  }).join('')}</div>`;
 
 screens.capture = () => {
   const side = S.photos.obv ? 'rev' : 'obv';
@@ -726,14 +802,15 @@ screens.money = () => {
   const gradeTxt = gradeLabel(c, a.grades);
   const idl = identityLine(c);
   const roughAI = c.aiValue && aiRange(c, a.grades, '') ;
+  recordHistory();
   const profitTxt = a.targetBuy && a.range ? (() => {
-    const lo = a.range.low - a.targetBuy, hi = a.range.high - a.targetBuy;
-    return money(lo) === money(hi) ? `~${money(hi)}` : `~${money(lo)}–${money(hi)}`;
+    const lo = a.range.low - feeOf(a.range.low) - a.targetBuy, hi = a.range.high - feeOf(a.range.high) - a.targetBuy;
+    const w = (n) => (n < 0 ? '-$' : '$') + Math.abs(Math.round(n)).toLocaleString('en-US'); const L = w(lo), H = w(hi); return L === H ? `~${H}` : `~${L}–${H}`;
   })() : null;
   return `
   <div class="topbar"><button class="back" data-a="go" data-s="${c.skipGrade ? 'match' : 'grade'}">Back</button>
     ${c.skipGrade ? '<span class="pill neutral">Bullion pricing</span>' : `<button class="btn-link" data-a="go" data-s="grade">${a.confirmed ? `${gradeTxt} · Change` : `${gradeTxt} suggested · Confirm`}</button>`}</div>
-  ${S.added ? `<div class="toast">✓ Added · Purchase #${S.purchase.no} · ${S.purchase.items.length} coin${S.purchase.items.length === 1 ? '' : 's'}</div>` : ''}
+  ${S.added ? `<div class="toast">✓ Added to ${esc(S.purchase.name)} · ${S.purchase.items.length} coin${S.purchase.items.length === 1 ? '' : 's'}</div>` : ''}
   <div class="stack" style="gap:4px">
     <h2>${esc(c.name)}</h2>
     ${idl ? `<span class="small muted">${esc(idl)}</span>` : ''}
@@ -767,7 +844,7 @@ screens.money = () => {
       : a.targetBuy == null
         ? `<span class="mid">—</span><span class="small muted">Enter an expected sale price to get a target buy.</span>`
         : `<span class="big">${money(a.targetBuy)}</span>
-           <span class="small muted">${pct(a.margin)} margin${a.confirmed ? '' : ', from the low end until grade is confirmed'}${profitTxt ? ` · expected profit ${profitTxt}` : ''} · <button class="btn-link small" data-a="go" data-s="settings" style="padding:0">Change</button></span>`}
+           <span class="small muted">${pct(a.margin)} margin${feeOn() ? ' ' + feeNote() : ''}${a.confirmed ? '' : ', from the low end until grade is confirmed'}${profitTxt ? ` · expected profit ${profitTxt}` : ''} · <button class="btn-link small" data-a="go" data-s="settings" style="padding:0">Change</button></span>`}
   </div>
 
   <div class="grid3">
@@ -779,7 +856,8 @@ screens.money = () => {
     <button class="tile" data-a="go" data-s="sales" style="border:0;min-height:0;font-weight:400;color:var(--ink);text-align:left;justify-content:flex-start;align-items:stretch"><span class="eyebrow">Sales ›</span><b class="num">${a.isAI ? '<span class="small">eBay · PCGS</span>' : salesRange(c, a.grades)}</b></button>
   </div>
 
-  <button id="addBtn" class="btn-primary btn-wide" data-a="addToPurchase" ${(a.hideTarget || a.targetBuy == null) && !a.cost ? 'disabled' : ''}>+ Add to purchase</button>
+  <button id="addBtn" class="btn-primary btn-wide" data-a="addToPurchase" ${(a.hideTarget || a.targetBuy == null) && !a.cost ? 'disabled' : ''}>+ Add to ${esc(S.purchase.name)}</button>
+  <div class="row between" style="margin-top:-8px"><span class="small muted">${S.purchase.items.length} coin${S.purchase.items.length === 1 ? '' : 's'} in this lot</span><button class="btn-link small" data-a="go" data-s="lots">Change lot</button></div>
   <button class="btn-ghost btn-wide" data-a="listing">Create listing</button>
 
   <details id="more" ${S.moreOpen ? 'open' : ''}><summary>More analysis ›</summary>
@@ -871,17 +949,21 @@ screens.details = () => {
 
 screens.purchase = () => {
   const P = S.purchase;
-  if (!P.items.length) return `
-    <div class="topbar"><button class="back" data-a="go" data-s="home">Home</button></div>
-    <h2>Purchase #${P.no}</h2>
-    <div class="card"><p>No coins yet. Scan a coin and tap <b>Add to purchase</b>; the offer builds as you go.</p></div>
+  const head = `
+    <div class="topbar"><button class="back" data-a="go" data-s="home">Home</button><button class="btn-link" data-a="go" data-s="lots">All lots ›</button></div>
+    <input id="lotname" type="text" value="${esc(P.name)}" aria-label="Lot name" style="font-family:var(--f-display);font-size:1.45rem;font-weight:700;border:0;padding:4px 0;min-height:0;background:transparent">
+    <div class="row" style="gap:8px">
+      <button class="pill ${P.status !== 'bought' ? 'warn' : 'neutral'}" data-a="lotStatus" data-v="considering" style="border:0;min-height:36px;padding:6px 14px">Considering</button>
+      <button class="pill ${P.status === 'bought' ? 'good' : 'neutral'}" data-a="lotStatus" data-v="bought" style="border:0;min-height:36px;padding:6px 14px">Bought</button>
+    </div>
+    <label class="field" for="lotnotes">Table / notes<input id="lotnotes" type="text" value="${esc(P.notes || '')}" placeholder="e.g. Table 412, Mike, open to bulk deal"></label>`;
+  if (!P.items.length) return head + `
+    <div class="card"><p>No coins yet. Scan a coin and tap <b>Add to ${esc(P.name)}</b>; the totals build as you go.</p></div>
     <button class="btn-primary btn-wide" data-a="scan">Scan a coin</button>
     <button class="btn-ghost btn-wide" data-a="go" data-s="quick">+ Quick add bullion or junk silver</button>`;
   const T = lotTotals();
   const lm = T.margin;
-  return `
-  <div class="topbar"><button class="back" data-a="go" data-s="home">Home</button><span class="small muted">${T.count} coin${T.count === 1 ? '' : 's'}</span></div>
-  <h2>Purchase #${P.no}</h2>
+  return head + `
 
   <div class="card">
     <div class="grid2">
@@ -908,7 +990,8 @@ screens.purchase = () => {
         <div style="min-width:0">
           <div style="font-weight:600">${esc(it.coin.name)}</div>
           <div class="small muted">${esc(it.gradeTxt)} · sells ~${money(it.mid)} ${it.liqLabel ? `· <span class="dot" style="background:var(--${tone(it.liqLabel) === 'good' ? 'good' : tone(it.liqLabel) === 'warn' ? 'warn' : 'bad'})"></span> ${it.liqLabel}` : ''}</div>
-          <div class="small">${it.mid ? `Profit ${money(it.mid - it.allocCost)} · margin ${pct((it.mid - it.allocCost) / it.mid)}` : 'No value yet'} <button class="btn-link small" data-a="removeItem" data-i="${i}" style="padding:0 0 0 6px">Remove</button></div>
+          <div class="small">${it.mid ? `Profit ${money(it.mid - feeOf(it.mid) - it.allocCost)} · margin ${pct((it.mid - feeOf(it.mid) - it.allocCost) / it.mid)}` : 'No value yet'} <button class="btn-link small" data-a="removeItem" data-i="${i}" style="padding:0 0 0 6px">Remove</button></div>
+          <input type="text" data-inote="${i}" value="${esc(P.items[i].note || '')}" placeholder="Note" style="margin-top:6px;min-height:36px;padding:6px 10px;font-size:.85rem">
         </div>
         <input class="costin num" type="number" inputmode="decimal" data-cost="${i}" value="${it.cost}" aria-label="Cost for ${esc(it.coin.name)}" ${P.lotOffer ? 'disabled title="Set by lot offer"' : ''}>
       </div>`).join('')}
@@ -916,10 +999,11 @@ screens.purchase = () => {
   </div>
 
   <div class="grid2"><button class="btn-primary" data-a="scan">Scan a coin</button><button class="btn-ghost" data-a="go" data-s="quick">+ Quick add</button></div>
+  <button class="btn-ghost btn-wide" data-a="newLot">+ New lot</button>
   ${S.confirmClear
-    ? `<div class="confirmbox"><b>Start a new purchase?</b><span class="small">This clears the ${T.count} coins in Purchase #${P.no}.</span>
-       <div class="grid2"><button class="btn-ghost" data-a="cancelClear">Keep</button><button class="btn-primary" data-a="doClear" style="background:var(--bad);color:#fff">Clear</button></div></div>`
-    : `<button class="btn-ghost btn-wide" data-a="askClear">Start new purchase</button>`}`;
+    ? `<div class="confirmbox"><b>Delete ${esc(P.name)}?</b><span class="small">This removes the lot and its ${T.count} coins. Scan history keeps the scans.</span>
+       <div class="grid2"><button class="btn-ghost" data-a="cancelClear">Keep</button><button class="btn-primary" data-a="deleteLot" style="background:var(--bad);color:#fff">Delete</button></div></div>`
+    : `<button class="btn-link btn-wide" data-a="askClear" style="color:var(--bad)">Delete this lot</button>`}`;
 };
 
 function lotTotals() {
@@ -942,17 +1026,44 @@ function lotTotals() {
     liqLabel: r.a.liq ? r.a.liq.label : '',
   }));
   const T = purchaseTotals(items, margin, parseFloat(P.lotOffer) || 0);
+  if (feeOn()) {
+    const sumFee = (k) => items.reduce((acc, it) => acc + feeOf(it[k]), 0);
+    T.feesMid = sumFee('mid');
+    T.profitMid = round2(T.profitMid - T.feesMid); T.profitLow = round2(T.profitLow - sumFee('low')); T.profitHigh = round2(T.profitHigh - sumFee('high'));
+    T.marginMid = T.mid ? round2(T.profitMid / T.mid) : 0;
+    T.maxOffer = Math.max(0, round2(T.maxOffer - sumFee('targetBase')));
+    const fp = (+S.settings.fee.pct || 0) / 100, ff = (+S.settings.fee.fixed || 0) * items.length;
+    T.requiredSell = round2((T.cost + ff) / Math.max(0.05, 1 - margin - fp));
+    T.status = !(T.cost > 0) ? 'Unknown' : T.requiredSell <= T.low ? 'Likely' : T.requiredSell <= T.high ? 'Possible' : 'Unlikely';
+  }
   return { ...T, margin };
+}
+
+function verdict(T, P) {
+  const ask = parseFloat(P.asking);
+  if (!(ask > 0)) return '';
+  const net = T.mid - (T.feesMid || 0);
+  const profit = net - ask, margin = T.mid ? profit / T.mid : 0;
+  const gap = ask - T.maxOffer, gapPct = ask ? gap / ask : 0;
+  if (ask <= T.maxOffer) return `<div class="feas good"><div class="row between"><b>Buy</b><span class="pill good">Within target</span></div>
+    <span class="small">Asking ${money(ask)} is at or under your max offer of ${money(T.maxOffer)}. At their price: profit ~${money(profit)}, ${pct(margin)} margin${feeOn() ? ' ' + feeNote() : ''}.</span></div>`;
+  if (profit > 0) return `<div class="feas warn"><div class="row between"><b>Counter at ${money(T.maxOffer)}</b><span class="pill warn">Negotiate</span></div>
+    <span class="small">Asking is ${money(gap)} (${pct(gapPct)}) above your max. At their price you'd still make ~${money(profit)}, a ${pct(margin)} margin.</span></div>`;
+  return `<div class="feas bad"><div class="row between"><b>Too high</b><span class="pill bad">Walk or push hard</span></div>
+    <span class="small">At ${money(ask)} you'd lose ~${money(-profit)}. They'd need to come down ${money(gap)} (${pct(gapPct)}) to hit your target.</span></div>`;
 }
 
 function lotCalcInner(T) {
   const P = S.purchase;
   return `
+    <label class="field" for="asking">Seller asking for the lot
+      <input id="asking" type="number" inputmode="decimal" min="0" placeholder="What are they asking?" value="${esc(P.asking || '')}"></label>
+    ${verdict(T, P)}
     <label class="field" for="lot">Your offer for the whole lot
       <input id="lot" type="number" inputmode="decimal" min="0" placeholder="Sum of coin costs: ${money(T.costEntered)}" value="${esc(P.lotOffer)}"></label>
     <div class="grid2">
       <div class="tile"><span class="eyebrow">Total cost</span><b class="num">${money(T.cost)}</b></div>
-      <div class="tile"><span class="eyebrow">Expected profit</span><b class="num">${money(T.profitLow)}–${money(T.profitHigh)}</b></div>
+      <div class="tile"><span class="eyebrow">Expected profit</span><b class="num">${money(T.profitLow)}–${money(T.profitHigh)}</b>${feeOn() ? `<span class="small muted">${feeNote()} (~${money(T.feesMid)})</span>` : ''}</div>
       <div class="tile"><span class="eyebrow">Margin at typical sale</span><b class="num">${pct(T.marginMid)}</b></div>
       <div class="tile"><span class="eyebrow">Melt cushion</span><b class="num">${T.cost ? pct(T.meltTotal / T.cost) : '—'}</b><span class="small muted">of cost</span></div>
     </div>
@@ -1108,6 +1219,15 @@ screens.settings = () => `
     <p class="small muted">${spot().live ? 'Updates automatically every 10 minutes. Editing here overrides it until the next update.' : esc(S.spotError || 'Live spot loads from metals.dev when the key is set in Vercel.')}</p>
   </div>
   <div class="card">
+    <span class="eyebrow">Selling fees (optional)</span>
+    <div class="chips" style="grid-template-columns:repeat(4,1fr)">${['none', 'ebay', 'whatnot', 'custom'].map((ch) => `<button class="chip ${S.settings.fee.channel === ch ? 'on' : ''}" data-a="feeChannel" data-ch="${ch}" style="font-size:.9rem;font-family:var(--f-body)">${{ none: 'None', ebay: 'eBay', whatnot: 'Whatnot', custom: 'Custom' }[ch]}</button>`).join('')}</div>
+    <div class="grid2">
+      <label class="field" for="fpct">Fee %<input id="fpct" type="number" inputmode="decimal" value="${esc(S.settings.fee.pct)}" ${S.settings.fee.channel === 'none' ? 'disabled' : ''}></label>
+      <label class="field" for="ffix">Per-order $<input id="ffix" type="number" inputmode="decimal" value="${esc(S.settings.fee.fixed)}" ${S.settings.fee.channel === 'none' ? 'disabled' : ''}></label>
+    </div>
+    <p class="small muted">Target buys and profits subtract these fees. Defaults are estimates; check your current rates.</p>
+  </div>
+  <div class="card">
     <label class="field" for="foot">Listing footer (optional)<textarea id="foot" rows="4" style="font:inherit;width:100%;padding:12px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--ink)" placeholder="Shipping, returns, combined shipping…">${esc(store.get('cs.footer', ''))}</textarea></label>
     <p class="small muted">Added to the end of every listing description.</p>
   </div>
@@ -1123,15 +1243,15 @@ function render() {
   document.getElementById('app').innerHTML = screens[S.screen]();
   const bar = document.getElementById('pbar');
   const n = S.purchase.items.length;
-  const showBar = n && !['purchase', 'capture', 'identifying', 'settings', 'listing', 'quick'].includes(S.screen);
+  const showBar = n && !['purchase', 'capture', 'identifying', 'settings', 'listing', 'quick', 'lots', 'history'].includes(S.screen);
   bar.hidden = !showBar;
   if (showBar) {
     const T = lotTotals();
-    bar.innerHTML = `<button data-a="go" data-s="purchase"><span>Purchase #${S.purchase.no} · ${n} coin${n === 1 ? '' : 's'}</span><span class="num">${money(T.cost)} · +${money(T.profitMid)} ›</span></button>`;
+    bar.innerHTML = `<button data-a="go" data-s="purchase"><span>${esc(S.purchase.name)} · ${n} coin${n === 1 ? '' : 's'}</span><span class="num">${money(T.cost)} · +${money(T.profitMid)} ›</span></button>`;
   }
   window.scrollTo(0, 0);
 }
-function go(s) { if (s === 'settings') prevScreen = S.screen; S.screen = s; render(); }
+function go(s) { if (s === 'settings' || s === 'lots') prevScreen = S.screen; if (s !== S.screen) S.confirmClear = false; S.screen = s; render(); }
 
 /* ---------- photos ---------- */
 function shrink(file, max, cb) {
@@ -1404,7 +1524,7 @@ async function runIdentify(hints, opts = {}) {
       S.idError = 'Claude couldn\'t tell what this coin is from these photos.';
       return go('idfail');
     }
-    S.coin = coinFromAI(r);
+    S.coin = coinFromAI(r); S.histAt = Date.now();
     fetchLookup(S.coin, r);
     S.fields = { country: S.coin.country, denomination: S.coin.denomination, year: S.coin.year, mint: S.coin.mint };
     S.expSale = ''; S.cost = ''; S.candidates = false; S.manual = false;
@@ -1549,9 +1669,28 @@ document.addEventListener('click', (e) => {
     save(); S.quick = { ...Q, qty: '' }; return go('purchase');
   }
   if (a === 'removeItem') { S.purchase.items.splice(+t.dataset.i, 1); save(); return render(); }
+  if (a === 'newLot') { newLot(); S.confirmClear = false; return go('purchase'); }
+  if (a === 'openLot') { S.purchase = S.lots.find((l) => l.id === t.dataset.id) || S.purchase; save(); S.confirmClear = false; return go(S.coin && prevScreen === 'money' ? 'money' : 'purchase'); }
+  if (a === 'lotStatus') { S.purchase.status = t.dataset.v; save(); return render(); }
+  if (a === 'deleteLot') {
+    S.lots = S.lots.filter((l) => l.id !== S.purchase.id);
+    if (!S.lots.length) newLot(); else S.purchase = S.lots[0];
+    S.confirmClear = false; save(); return go('lots');
+  }
+  if (a === 'openHist') {
+    const h = S.history.find((x) => x.id === t.dataset.id); if (!h) return;
+    Object.assign(S, { coin: { ...h.coin }, grades: h.grades || [], confirmed: h.confirmed, expSale: h.expSale || '', cost: '', added: false, feedback: 'n/a', photos: { thumb: h.thumb }, files: {}, scanId: null, histAt: h.at });
+    return go('money');
+  }
+  if (a === 'clearHistory') { S.history = []; S.confirmClear = false; save(); return render(); }
+  if (a === 'feeChannel') {
+    const ch = t.dataset.ch; S.settings.fee.channel = ch;
+    if (FEE_PRESETS[ch]) { S.settings.fee.pct = FEE_PRESETS[ch].pct; S.settings.fee.fixed = FEE_PRESETS[ch].fixed; }
+    save(); return render();
+  }
   if (a === 'askClear') { S.confirmClear = true; return render(); }
   if (a === 'cancelClear') { S.confirmClear = false; return render(); }
-  if (a === 'doClear') { S.purchase = { no: S.purchase.no + 1, items: [], lotOffer: '', lotMargin: null }; S.confirmClear = false; save(); return go('home'); }
+
   if (a === 'saveSettings') {
     const v = (id) => parseFloat(document.getElementById(id).value);
     if (v('mn') >= 0 && v('mn') < 100) S.settings.marginNumis = v('mn') / 100;
@@ -1561,6 +1700,7 @@ document.addEventListener('click', (e) => {
     S.settings.spot.asOf = 'Sample spot, edited';
     const admEl = document.getElementById('adm'); if (admEl) store.set('cs.admin', admEl.value.trim());
     const footEl = document.getElementById('foot'); if (footEl) store.set('cs.footer', footEl.value.trim());
+    if (S.settings.fee.channel !== 'none') { S.settings.fee.pct = v('fpct') >= 0 ? v('fpct') : 0; S.settings.fee.fixed = v('ffix') >= 0 ? v('ffix') : 0; }
     save(); return go(prevScreen);
   }
 });
@@ -1590,6 +1730,15 @@ document.addEventListener('input', (e) => {
   if (el.id === 'lt') { const tc = document.getElementById('tcount'); if (tc) tc.textContent = el.value.length + '/80'; return; }
   if (el.id === 'expsale') {
     S.expSale = el.value;
+    return;
+  }
+  if (el.id === 'lotname') { S.purchase.name = el.value || 'Lot'; save(); return; }
+  if (el.id === 'lotnotes') { S.purchase.notes = el.value; save(); return; }
+  if (el.dataset && el.dataset.inote != null) { S.purchase.items[+el.dataset.inote].note = el.value; save(); return; }
+  if (el.id === 'asking') {
+    S.purchase.asking = el.value; save();
+    const box = document.getElementById('lotcalc'); box.innerHTML = lotCalcInner(lotTotals());
+    const ni = document.getElementById('asking'); ni.focus(); try { ni.setSelectionRange(ni.value.length, ni.value.length); } catch (_) {}
     return;
   }
   if (el.id === 'lot') {
