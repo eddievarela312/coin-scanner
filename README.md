@@ -30,6 +30,13 @@ Anthropic API key and asks Claude to identify the coin. The key never reaches th
 Open the link on your phone in Safari, then Share, then Add to Home Screen.
 The first scan asks for your access code.
 
+## Scan logging (Supabase, optional but recommended)
+1. supabase.com: create a project.
+2. SQL Editor > New query: paste `supabase-setup.sql` and click Run.
+3. Project Settings > API: copy the Project URL and the service_role key.
+4. In Vercel add `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, and `ADMIN_CODE` (a second code, for viewing the log). Redeploy.
+5. Review scans at `/api/scans?code=ADMIN_CODE` (add `&photos=1` for photo links).
+
 ## Changing things later
 - New key or code: Vercel, Project, Settings, Environment Variables, then Redeploy.
 - If your key isn't scoped to a workspace, either create the key inside a workspace in the

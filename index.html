@@ -565,6 +565,7 @@ screens.code = () => `
   <p class="muted">This keeps strangers from using your scans. You only enter it once on this phone.</p>
   ${S.codeWrong ? '<p class="flag">That code didn\'t work. Try again.</p>' : ''}
   <label class="field" for="code">Access code<input id="code" type="text" autocomplete="off" autocapitalize="off"></label>
+  <label class="field" for="tester">Your name<input id="tester" type="text" autocomplete="name" value="${esc(store.get('cs.tester', ''))}" placeholder="So we know whose scans these are"></label>
   <button class="btn-primary btn-wide" data-a="saveCode">Continue</button>`;
 
 screens.pick = () => `
@@ -945,11 +946,19 @@ function blobToBase64(b) {
     r.readAsDataURL(b);
   });
 }
+function sendFeedback(patch) {
+  if (!SERVER_MODE || !patch.scan_id) return;
+  fetch('/api/feedback', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Access-Code': store.get('cs.code', '') },
+    body: JSON.stringify(patch),
+  }).catch(() => {});
+}
 async function serverJson(hints, images, signal) {
   const payload = { hints: hints || '', images: await Promise.all(images.map(blobToBase64)) };
   const res = await fetch('/api/identify', {
     method: 'POST', signal,
-    headers: { 'Content-Type': 'application/json', 'X-Access-Code': store.get('cs.code', '') },
+    headers: { 'Content-Type': 'application/json', 'X-Access-Code': store.get('cs.code', ''), 'X-Tester': store.get('cs.tester', '') },
     body: JSON.stringify(payload),
   }).catch((e) => { throw { code: e && e.name === 'AbortError' ? 'cancelled' : 'network' }; });
   if (res.status === 401) throw { code: 'need_code' };
@@ -1084,7 +1093,7 @@ async function runIdentify(hints, opts = {}) {
       ? await serverJson(hints, images, idCtl.signal)
       : await sample.json(ID_PROMPT(hints), { images: images.length ? images : undefined, signal: idCtl.signal, modelTier: 'default', cache: false });
     S.idSeconds = Math.round((Date.now() - t0) / 1000);
-    S.ai = r; S.idDetail = '';
+    S.ai = r; S.idDetail = ''; S.scanId = r.scan_id || null;
     if (!r || r.identified === false || !r.coin_name) {
       S.idError = 'Claude couldn\'t tell what this coin is from these photos.';
       return go('idfail');
@@ -1145,6 +1154,7 @@ document.addEventListener('click', (e) => {
     const v = document.getElementById('code').value.trim();
     if (!v) return;
     store.set('cs.code', v); S.codeWrong = false;
+    const tn = document.getElementById('tester').value.trim(); if (tn) store.set('cs.tester', tn);
     const p = S.pending || { hints: '', opts: {} }; S.pending = null;
     return runIdentify(p.hints, p.opts);
   }
@@ -1178,6 +1188,11 @@ document.addEventListener('click', (e) => {
   if (a === 'hideCandidates') { S.candidates = false; return render(); }
   if (a === 'confirmMatch') {
     S.candidates = false;
+    if (S.wrongScanId && S.coin && S.coin.name && S.wrongScanId !== S.scanId) {
+      sendFeedback({ scan_id: S.wrongScanId, corrected_to: S.coin.name });
+      sendFeedback({ scan_id: S.scanId, correct: 'yes' });
+      S.wrongScanId = null;
+    }
     if (S.coin.skipGrade) { S.grades = ['ANY']; S.confirmed = true; return go('money'); }
     const slabGrade = S.coin.slab && GRADE_MAP(S.coin.slab.grade);
     if (slabGrade) { S.grades = [slabGrade]; S.confirmed = true; return go('money'); }
@@ -1185,7 +1200,13 @@ document.addEventListener('click', (e) => {
   }
   if (a === 'setGrade') { S.grades = [t.dataset.g]; S.confirmed = true; return go('money'); }
   if (a === 'useRange') { S.grades = S.coin.suggestedGrades && S.coin.suggestedGrades.length ? [...S.coin.suggestedGrades] : ['F', 'VF']; S.confirmed = false; return go('money'); }
-  if (a === 'fb') { S.feedback = t.dataset.v; if (S.log.length) S.log[S.log.length - 1].correct = t.dataset.v; if (t.dataset.v === 'no') return go('fields'); return render(); }
+  if (a === 'fb') {
+    S.feedback = t.dataset.v;
+    if (S.log.length) S.log[S.log.length - 1].correct = t.dataset.v;
+    sendFeedback({ scan_id: S.scanId, correct: t.dataset.v });
+    if (t.dataset.v === 'no') { S.wrongScanId = S.scanId; return go('fields'); }
+    return render();
+  }
   if (a === 'addToPurchase') {
     const an = analyze(S.coin, S.grades, S.confirmed, S.cost, null, S.expSale);
     const cost = an.cost ?? an.targetBuy ?? 0;

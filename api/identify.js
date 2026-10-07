@@ -6,6 +6,8 @@
 //   APP_ACCESS_CODE    (required)  a code you choose; testers type it once
 //   CLAUDE_MODEL       (optional)  defaults to claude-sonnet-5-5
 
+import { insertScan, uploadPhoto, loggingOn } from '../lib/log.js';
+
 const MODEL = process.env.CLAUDE_MODEL || 'claude-sonnet-5-5';
 const MAX_IMAGE_B64 = 3_000_000; // ~2.2 MB per photo after JPEG re-encode
 
@@ -69,6 +71,17 @@ export default async function handler(req, res) {
   const images = Array.isArray(body.images) ? body.images.slice(0, 2).filter((x) => typeof x === 'string') : [];
   if (images.some((x) => x.length > MAX_IMAGE_B64)) return res.status(413).json({ error: 'image_rejected' });
 
+  const tester = String(req.headers['x-tester'] || '').slice(0, 60);
+  const t0 = Date.now();
+  // Save the scan (photos + result) for accuracy review. Never blocks a scan on failure.
+  const log = async (fields) => {
+    if (!loggingOn()) return null;
+    const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+    const rand = Math.random().toString(36).slice(2, 8);
+    const paths = (await Promise.all(images.map((b64, i) => uploadPhoto(`${stamp}-${rand}-${i ? 'rev' : 'obv'}.jpg`, b64)))).filter(Boolean);
+    return insertScan({ tester, hints, photo_paths: paths, server_ms: Date.now() - t0, ...fields });
+  };
+
   const content = [
     ...images.map((data) => ({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data } })),
     { type: 'text', text: buildPrompt(hints, images.length) },
@@ -87,7 +100,9 @@ export default async function handler(req, res) {
       body: JSON.stringify({ model: MODEL, max_tokens: 2000, messages: [{ role: 'user', content }] }),
     });
   } catch (e) {
-    return res.status(502).json({ error: 'upstream_error', detail: 'Could not reach Claude: ' + String(e && e.message || e) });
+    const detail = 'Could not reach Claude: ' + String(e && e.message || e);
+    await log({ error: detail });
+    return res.status(502).json({ error: 'upstream_error', detail });
   }
   if (r.status === 429) return res.status(429).json({ error: 'rate_limited' });
   if (r.status === 401 || r.status === 403) return res.status(500).json({ error: 'not_configured' });
@@ -95,6 +110,7 @@ export default async function handler(req, res) {
     const raw = await r.text();
     let detail = raw.slice(0, 300);
     try { detail = JSON.parse(raw).error.message; } catch (_) {}
+    await log({ error: `Claude ${r.status}: ${detail}` });
     if (/credit balance/i.test(detail)) return res.status(402).json({ error: 'no_credit', detail });
     return res.status(502).json({ error: 'upstream_error', detail: `Claude returned ${r.status}: ${detail}` });
   }
@@ -102,6 +118,7 @@ export default async function handler(req, res) {
   const out = await r.json();
   const text = (out.content || []).filter((c) => c.type === 'text').map((c) => c.text).join('');
   const json = extractJson(text);
-  if (!json) return res.status(502).json({ error: 'invalid_json' });
-  return res.status(200).json(json);
+  if (!json) { await log({ error: 'invalid_json', result: { raw: text.slice(0, 2000) } }); return res.status(502).json({ error: 'invalid_json' }); }
+  const scanId = await log({ coin_name: json.coin_name || null, confidence: json.confidence || null, result: json });
+  return res.status(200).json({ ...json, scan_id: scanId });
 }
