@@ -8,6 +8,7 @@ export default async function handler(req, res) {
     api_key_looks_right: /^sk-ant-/.test(process.env.ANTHROPIC_API_KEY || ''),
     access_code_set: !!process.env.APP_ACCESS_CODE,
     model: MODEL,
+    workspace_id_set: !!process.env.ANTHROPIC_WORKSPACE_ID,
   };
   const code = process.env.APP_ACCESS_CODE;
   if (!code || req.query.code !== code) {
@@ -18,7 +19,8 @@ export default async function handler(req, res) {
   try {
     const r = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
-      headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+      headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01',
+        ...(process.env.ANTHROPIC_WORKSPACE_ID ? { 'anthropic-workspace-id': process.env.ANTHROPIC_WORKSPACE_ID } : {}), 'content-type': 'application/json' },
       body: JSON.stringify({ model: MODEL, max_tokens: 16, messages: [{ role: 'user', content: 'Reply with the word OK.' }] }),
     });
     const text = await r.text();

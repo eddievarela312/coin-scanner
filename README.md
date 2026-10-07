@@ -32,6 +32,8 @@ The first scan asks for your access code.
 
 ## Changing things later
 - New key or code: Vercel, Project, Settings, Environment Variables, then Redeploy.
+- If your key isn't scoped to a workspace, either create the key inside a workspace in the
+  Anthropic console, or add `ANTHROPIC_WORKSPACE_ID` with your workspace ID.
 - Optional `CLAUDE_MODEL` variable picks the model (default `claude-sonnet-5-5`).
 
 ## Cost
