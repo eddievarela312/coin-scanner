@@ -527,7 +527,7 @@ screens.home = () => `
     <h1>Coin Scanner</h1>
     <p class="muted">Identify. Value. Buy smarter.</p>
   </div>
-  <div class="banner"><b>Prototype.</b> Identification is live and reads your photos with Claude. Prices are Claude's rough estimates or your own numbers until Greysheet and Numista are connected. Spot is a sample: set today's price in Margins &amp; spot.</div>
+  <div class="banner"><b>Prototype.</b> Identification is live and reads your photos with Claude. Prices are Claude's rough estimates or your own numbers until Greysheet and Numista are connected. ${spot().live ? '' : 'Spot is a sample: set today\'s price in Margins &amp; spot.'}</div>
   <button class="btn-primary btn-wide" data-a="scan">Scan a coin</button>
   <button class="btn-ghost btn-wide" data-a="demo">Try the sample coins instead</button>
   <div class="grid2">
@@ -933,12 +933,12 @@ screens.settings = () => `
     <p class="small muted">Margin means profit as a share of the sale price. 25% on a $100 sale is $25 profit, so the buy is $75.</p>
   </div>
   <div class="card">
-    <span class="eyebrow">Spot (sample, editable for testing)</span>
+    <span class="eyebrow">${spot().live ? `Spot · ${esc(spot().asOf)}` : 'Spot (sample, editable for testing)'}</span>
     <div class="grid2">
       <label class="field" for="ss">Silver $/oz<input id="ss" type="number" inputmode="decimal" value="${spot().silver}"></label>
       <label class="field" for="sg">Gold $/oz<input id="sg" type="number" inputmode="decimal" value="${spot().gold}"></label>
     </div>
-    <p class="small muted">Live version pulls spot from metals.dev every few minutes.</p>
+    <p class="small muted">${spot().live ? 'Updates automatically every 10 minutes. Editing here overrides it until the next update.' : esc(S.spotError || 'Live spot loads from metals.dev when the key is set in Vercel.')}</p>
   </div>
   <div class="card">
     <label class="field" for="adm">Owner code (optional)<input id="adm" type="text" autocomplete="off" autocapitalize="off" value="${esc(store.get('cs.admin', ''))}"></label>
@@ -1427,6 +1427,25 @@ document.addEventListener('change', (e) => {
   if (el.id === 'lm') render();
   if (el.id === 'expsale') render();
 });
+
+// Live spot (standalone app): replaces the sample spot when available.
+async function loadSpot() {
+  if (!SERVER_MODE) return;
+  try {
+    const j = await (await fetch('/api/spot')).json();
+    if (j && j.ok) {
+      const t = new Date(j.asOf);
+      S.settings.spot = { silver: j.silver, gold: j.gold, live: true,
+        asOf: 'Live, metals.dev' + (isNaN(t) ? '' : ' · ' + t.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })) };
+      save();
+      if (!['capture', 'identifying'].includes(S.screen)) render();
+    } else if (j && j.error) {
+      S.spotError = j.error;
+    }
+  } catch (_) {}
+}
+loadSpot();
+setInterval(loadSpot, 10 * 60 * 1000);
 
 render();
 </script>
