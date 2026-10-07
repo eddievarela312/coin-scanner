@@ -652,7 +652,7 @@ function aiMatch(c) {
   <p class="eyebrow">Match found${S.idSeconds ? ` · ${S.idSeconds}s` : ''}</p>
   <h2>${esc(c.name)}</h2>
   ${photos}
-  ${c.refImages && c.refImages.length ? `<div class="tile"><span class="eyebrow">Numista reference · ${esc(c.numista)}</span><div class="thumbs">${c.refImages.map((u) => `<img src="${esc(u)}" alt="" style="width:72px;height:72px">`).join('')}</div><span class="small muted">${esc(c.numistaTitle || '')}</span></div>` : c.lookupPending ? '<p class="small muted">Loading Numista reference images…</p>' : ''}
+  ${c.numistaUrl ? `<p class="small muted">Numista match: ${esc(c.numistaTitle || '')}</p>` + `<a class="btn btn-ghost btn-wide" href="${esc(c.numistaUrl)}" target="_blank" rel="noopener">Compare with Numista photos · ${esc(c.numista)} ›</a>` : c.lookupPending ? '<p class="small muted">Checking Numista…</p>' : ''}
   ${c.slab ? `<div class="tile"><span class="eyebrow">${esc(c.slab.service || 'Slab')} slab detected</span><b>${esc(c.slab.grade || 'Grade not read')}</b>${c.slab.cert ? `<span class="small muted num">Cert # ${esc(c.slab.cert)}</span>` : ''}
     ${c.slab.service && /pcgs/i.test(c.slab.service) ? `<a class="small" href="https://www.pcgs.com/cert/${encodeURIComponent(c.slab.cert || '')}" target="_blank" rel="noopener" style="color:var(--accent)">Verify on PCGS</a>` : c.slab.service && /ngc/i.test(c.slab.service) ? `<a class="small" href="https://www.ngccoin.com/certlookup/" target="_blank" rel="noopener" style="color:var(--accent)">Verify on NGC</a>` : ''}</div>` : ''}
   ${c.varieties ? `<p class="small"><span class="flag">Variety:</span> Numista lists ${c.varieties.length} varieties for this year (${c.varieties.map(esc).join(' / ')}). Prices cover all of them until you confirm which.</p>` : ''}
@@ -716,7 +716,7 @@ screens.money = () => {
   <h2>${esc(c.name)}</h2>
   ${a.isAI && (!a.range || a.range.source === 'ai') && !c.lookupPending ? `<div class="banner">Value below is ${a.range ? 'Claude\'s rough estimate, not market data' : 'missing'}: no CPG or Numista price found for this coin. Enter your expected sale price for real numbers.</div>` : ''}
   ${c.lookupPending ? '<p class="small muted">Checking Numista and Greysheet…</p>' : ''}
-  ${c.refImages && c.refImages.length ? `<div class="row" style="gap:8px">${c.refImages.map((u) => `<img src="${esc(u)}" alt="" style="width:56px;height:56px;border-radius:50%;object-fit:cover;border:1px solid var(--line)">`).join('')}<span class="small muted">Numista reference · ${esc(c.numista)}</span></div>` : ''}
+
 
   <div class="card">
     <span class="eyebrow">Estimated market</span>
@@ -816,7 +816,7 @@ screens.details = () => {
   return `
   <div class="topbar"><button class="back" data-a="go" data-s="money">Back</button></div>
   <h2>${esc(c.name)}</h2>
-  ${c.refImages && c.refImages.length ? `<div class="thumbs">${c.refImages.map((u) => `<img src="${esc(u)}" alt="">`).join('')}</div>` : ''}
+  ${c.numistaUrl ? `<a class="btn btn-ghost btn-wide" href="${esc(c.numistaUrl)}" target="_blank" rel="noopener">Compare with Numista photos · ${esc(c.numista)} ›</a>` : ''}
   ${numistaNote ? `<p class="small muted">${esc(numistaNote)}</p>` : ''}
   <div class="card"><table><tbody>${rows.map(([k, v]) => `<tr><th>${k}</th><td class="num">${esc(v)}</td></tr>`).join('')}</tbody></table>
   <p class="small muted">${c.source === 'ai' ? (c.numistaUrl ? `Specs from Numista: <a href="${esc(c.numistaUrl)}" target="_blank" rel="noopener" style="color:var(--accent)">${esc(c.numista)}</a>.${c.gsName ? ` Pricing matched to Greysheet: ${esc(c.gsName)}.` : ''}` : 'Specs read by Claude from memory; no Numista match found. Verify before relying on them.') : 'Specs: Numista (sample values in this prototype).'}</p></div>`;
@@ -997,7 +997,7 @@ function mergeLookup(coin, L) {
     if (n.weight_g) coin.weight = n.weight_g + ' g';
     if (n.size_mm) coin.diameter = n.size_mm + ' mm';
     if (n.issue && n.issue.mintage) coin.mintage = Number(n.issue.mintage).toLocaleString('en-US');
-    coin.refImages = [n.obverse_thumb, n.reverse_thumb].filter(Boolean).map((u) => '/api/img?u=' + encodeURIComponent(u));
+    coin.refImages = null; // Numista blocks embedding its member photos; link to the Numista page instead
     coin.varieties = n.issue && n.issue.varieties ? n.issue.varieties : null;
     // Recompute precious-metal content from Numista weight + fineness when both are clear.
     const fm = String(n.composition || '').match(/(?:0?\.(\d{3,4}))|(\b9\d{2}\b)/);
