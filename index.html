@@ -1133,7 +1133,9 @@ Rules:
 - candidates: 2 to 4 OTHER likely coins, including close dates, mint marks and varieties, each with a short reason.
 - rough_value_usd: approximate typical US retail ranges for the grades in question, from general knowledge, only where you have a reasonable sense; otherwise {}. These are shown to the dealer labeled as rough estimates.
 - weights in grams, ASW/AGW in troy ounces.
-- photo_feedback: one short tip if the photos limited you (glare, blur, too small), else "".`;
+- photo_feedback: one short tip if the photos limited you (glare, blur, too small), else "".
+- Mint marks and assayer initials must agree: on Spanish colonial and Latin American coins, check that the assayer initials belong to that mint and year (e.g. 1769 Mexico City is Mo-MF; JM is a Lima assayer). If they conflict, trust the clearer of the two, list mint_mark as uncertain, and lower confidence.
+- For worn dates, give the most likely year but list year in uncertain_fields and put other plausible dates in candidates.`;
 
 function hintsFromFields() {
   if (!S.fields) return '';
@@ -1276,7 +1278,7 @@ document.addEventListener('click', (e) => {
   const a = t.dataset.a;
   if (a === 'go') return go(t.dataset.s);
   if (a === 'back') return go(prevScreen);
-  if (a === 'scan') { Object.assign(S, { photos: {}, files: {}, coin: null, fields: null, ai: null, cost: '', expSale: '', added: false, candidates: false, feedback: null, confirmClear: false, manual: false, idUnavailable: false }); return go('capture'); }
+  if (a === 'scan') { Object.assign(S, { wrongScanId: null, photos: {}, files: {}, coin: null, fields: null, ai: null, cost: '', expSale: '', added: false, candidates: false, feedback: null, confirmClear: false, manual: false, idUnavailable: false }); return go('capture'); }
   if (a === 'demo') { Object.assign(S, { photos: {}, files: {}, coin: null, cost: '', expSale: '', added: false, candidates: false, feedback: null, idUnavailable: false }); return go('pick'); }
   if (a === 'saveCode') {
     const v = document.getElementById('code').value.trim();
@@ -1288,9 +1290,10 @@ document.addEventListener('click', (e) => {
   }
   if (a === 'frontOnly') return waitForFiles().then(startIdentify);
   if (a === 'stopId') { if (idCtl) idCtl.abort(); return; }
-  if (a === 'researchId') return runIdentify(hintsFromFields(), { textOnly: !S.files.obv });
+  if (a === 'researchId') { if (S.scanId && !S.wrongScanId) S.wrongScanId = S.scanId; return runIdentify(hintsFromFields(), { textOnly: !S.files.obv }); }
   if (a === 'pickCandidate') {
     const cand = S.coin.alternates[+t.dataset.i];
+    if (S.scanId && !S.wrongScanId) S.wrongScanId = S.scanId;
     return runIdentify(`The dealer says this coin is: ${cand.coin_name}. Re-check the photos against that and fill in its details.`, { next: 'match', textOnly: !S.files.obv });
   }
   if (a === 'manual') {
@@ -1309,7 +1312,7 @@ document.addEventListener('click', (e) => {
     if (S.manual || !S.coin || !S.coin.name) return runIdentify(hintsFromFields(), { next: 'match', textOnly: !S.files.obv });
     const c = S.coin;
     const edited = c.source === 'ai' && ['country', 'denomination', 'year', 'mint'].some((k) => (S.fields[k] || '') !== (c[k] || ''));
-    if (edited) return runIdentify(hintsFromFields(), { next: 'match' });
+    if (edited) { if (S.scanId && !S.wrongScanId) S.wrongScanId = S.scanId; return runIdentify(hintsFromFields(), { next: 'match' }); }
     return go('match');
   }
   if (a === 'showCandidates') { S.candidates = true; return render(); }
@@ -1317,7 +1320,7 @@ document.addEventListener('click', (e) => {
   if (a === 'confirmMatch') {
     S.candidates = false;
     if (S.wrongScanId && S.coin && S.coin.name && S.wrongScanId !== S.scanId) {
-      sendFeedback({ scan_id: S.wrongScanId, corrected_to: S.coin.name });
+      sendFeedback({ scan_id: S.wrongScanId, correct: 'no', corrected_to: S.coin.name });
       sendFeedback({ scan_id: S.scanId, correct: 'yes' });
       S.wrongScanId = null;
     }

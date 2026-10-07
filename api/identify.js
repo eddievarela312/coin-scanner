@@ -50,7 +50,9 @@ Rules:
 - candidates: 2 to 4 OTHER likely coins, including close dates, mint marks and varieties, each with a short reason.
 - rough_value_usd: approximate typical US retail ranges for the grades in question, from general knowledge, only where you have a reasonable sense; otherwise {}. These are shown to the dealer labeled as rough estimates.
 - weights in grams, ASW/AGW in troy ounces.
-- photo_feedback: one short tip if the photos limited you (glare, blur, too small), else "".`;
+- photo_feedback: one short tip if the photos limited you (glare, blur, too small), else "".
+- Mint marks and assayer initials must agree: on Spanish colonial and Latin American coins, check that the assayer initials belong to that mint and year (e.g. 1769 Mexico City is Mo-MF; JM is a Lima assayer). If they conflict, trust the clearer of the two, list mint_mark as uncertain, and lower confidence.
+- For worn dates, give the most likely year but list year in uncertain_fields and put other plausible dates in candidates.`;
 
 function extractJson(text) {
   try { return JSON.parse(text); } catch (_) {}
