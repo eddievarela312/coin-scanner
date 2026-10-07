@@ -115,8 +115,8 @@ tr.hl td{background:var(--accent-soft)}
 .coinrow .costin{width:96px;min-height:40px;padding:8px 10px;text-align:right}
 .dot{width:10px;height:10px;border-radius:50%;display:inline-block}
 /* Bottom bar */
-.pbar{position:fixed;left:0;right:0;bottom:0;padding:10px 16px calc(10px + env(safe-area-inset-bottom,0px));background:var(--surface);border-top:1px solid var(--line);z-index:5}
-.pbar button{width:100%;max-width:460px;margin:0 auto;display:flex;justify-content:space-between;background:var(--ink);color:var(--bg);min-height:54px}
+.pbar{position:fixed;left:0;right:0;bottom:0;padding:8px 16px calc(8px + env(safe-area-inset-bottom,0px));background:var(--surface);border-top:1px solid var(--line);z-index:5}
+.pbar button{width:100%;max-width:460px;margin:0 auto;display:flex;justify-content:space-between;align-items:center;background:var(--sunk);color:var(--ink);border:1px solid var(--line);min-height:44px;font-size:.9rem;font-weight:600}
 .toast{background:var(--good-soft);color:var(--good);border-radius:12px;padding:12px 14px;font-weight:600}
 .home-hero{padding-top:28px;display:flex;flex-direction:column;gap:10px}
 .coinmark{width:64px;height:64px;border-radius:50%;background:radial-gradient(circle at 35% 30%,var(--accent-soft),var(--accent));box-shadow:inset 0 0 0 5px color-mix(in srgb,var(--accent) 70%,transparent)}
@@ -134,6 +134,8 @@ tr.hl td{background:var(--accent-soft)}
 .howto{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;text-align:center}
 .howto div{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 4px;display:flex;flex-direction:column;gap:2px}
 .howto b{font-family:var(--f-display);font-size:1.1rem;color:var(--accent)}
+.pricepair .card{gap:6px;padding:14px}
+.pp{font-family:var(--f-display);font-weight:700;font-size:1.75rem;line-height:1.05;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
 .confirmbox{border:1px solid var(--bad);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:10px}
 </style>
 
@@ -687,7 +689,7 @@ screens.capture = () => {
   </label>
   <input id="cam" type="file" accept="image/*" capture="environment" hidden>
   <input id="lib" type="file" accept="image/*" hidden>
-  <p class="small muted">Fill most of the circle. Tilt slightly to avoid glare. A plain dark background works best for raw coins. For slabs, make sure the label is readable.</p>
+  ${S.history.length >= 3 ? '' : '<p class="small muted">Fill most of the circle. Tilt slightly to avoid glare. A plain dark background works best for raw coins. For slabs, make sure the label is readable.</p>'}
   <div class="row between">
     <label class="btn-link" for="lib" style="cursor:pointer">Choose from photos</label>
     ${side === 'rev' ? '<button class="btn-link" data-a="frontOnly">Use front only</button>' : ''}
@@ -787,7 +789,7 @@ function aiMatch(c) {
   }
   return `
   <div class="topbar"><button class="back" data-a="go" data-s="fields">Edit details</button><span class="pill ${tone(conf === 'High' ? 'Likely' : conf === 'Medium' ? 'Possible' : 'Unlikely')}">${esc(conf)} confidence</span></div>
-  <p class="eyebrow">Match found${S.idSeconds ? ` · ${S.idSeconds}s` : ''}${S.ai && S.ai.claude_ms >= 1000 ? ` (Claude ${Math.round(S.ai.claude_ms / 1000)}s)` : ''}${S.ai && /haiku/i.test(S.ai.model || '') ? ' · Fast mode' : ''}</p>
+  <p class="eyebrow">Match found${S.idSeconds ? ` · ${S.idSeconds}s` : ''}${S.ai && /haiku/i.test(S.ai.model || '') ? ' · Fast mode' : ''}</p>
   <h2>${esc(c.name)}</h2>
   ${rarityBanner(c)}
   ${photos}
@@ -879,39 +881,34 @@ screens.money = () => {
     <div class="list">${c.gsVarieties.map((v, i) => `<button data-a="pickVariety" data-i="${i}" style="${c.gsVariety === i ? 'border-color:var(--accent);background:var(--accent-soft)' : ''}"><span>${esc(v.name)}</span><span class="small muted">${c.gsVariety === i ? 'Selected' : ''}</span></button>`).join('')}</div>
     <span class="small muted">${c.gsVariety == null ? 'Prices cover all varieties until you pick one.' : 'Prices are for this variety.'}</span></div>` : ''}
 
-  ${a.limited ? `
-  <div class="card">
-    <div class="row between"><span class="eyebrow">Market</span><span class="pill warn">AI estimate</span></div>
-    <span class="big" style="color:var(--warn)">${a.range ? range$(a.range) : '—'}</span>
-    <span class="small muted">No CPG or Numista price for this coin, so this is Claude's estimate, not sales data. Check comps below before paying well over melt.</span>
-  </div>` : `
-  <div class="card">
-    <span class="eyebrow">Market</span>
-    <span class="big">${a.range ? range$(a.range) : '—'}</span>
-    <span class="small muted">${a.range ? `Based on ${esc(a.range.basis)}${!a.confirmed ? ' · narrows when you confirm the grade' : ''}` : ''}</span>
-  </div>`}
-
+  ${catalogWarning(c)}
+  <div class="grid2 pricepair">
+    <div class="card">
+      <div class="row between"><span class="eyebrow">Market</span>${a.limited ? '<span class="pill warn" style="font-size:.68rem;padding:2px 8px">AI est.</span>' : ''}</div>
+      <span class="pp"${a.limited ? ' style="color:var(--warn)"' : ''}>${a.range ? range$(a.range) : '—'}</span>
+      <span class="small muted">${a.limited ? "Claude's estimate, not sales data" : a.range ? `${esc(shortBasis(a.range))}${!a.confirmed ? ' · grade not confirmed' : ''}` : ''}</span>
+    </div>
+    <div class="card">
+      <span class="eyebrow">Target buy</span>
+      ${a.hideTarget
+        ? `<span class="pp" style="font-size:1.15rem">Confirm grade</span><button class="btn-link small" data-a="go" data-s="grade" style="padding:0;align-self:flex-start">Pick the grade ›</button>`
+        : a.targetBuy == null
+          ? `<span class="pp">—</span><span class="small muted">Enter what comps show</span>`
+          : `<span class="pp"${a.limited ? ' style="color:var(--warn)"' : ''}>${a.limited ? '~' : ''}${money(a.targetBuy)}</span>
+             <span class="small muted">${pct(a.margin)} margin${feeOn() ? ' ' + feeNote() : ''}${profitTxt ? ` · profit ${profitTxt}` : ''}</span>`}
+    </div>
+  </div>
+  <div class="row" style="gap:18px;margin-top:-4px">
+    <span class="small"><span class="muted">Melt</span> <b class="num">${a.melt > 0 ? money(a.melt) : 'none'}</b></span>
+    <span class="small"><span class="muted">CPG</span> ${a.cpg.length ? `<b class="num">${a.cpg.map(money).join('–')}</b> <a href="https://www.greysheet.com" target="_blank" rel="noopener" style="color:var(--accent)">via CDN</a>` : `<b>${c.lookupPending ? 'loading…' : 'not found'}</b>`}</span>
+  </div>
   ${priceCheck(c, a)}
-  <div class="card">
-    ${compsButton(c)}
-    <label class="field" for="expsale">What are comps selling for? (optional)
+  ${compsButton(c)}
+  ${S.compsOpen || S.expSale ? `<div class="card">
+    <label class="field" for="expsale">What are comps selling for?
       <input id="expsale" type="number" inputmode="decimal" min="0" step="0.01" placeholder="e.g. 200" value="${esc(S.expSale)}"></label>
-    <span class="small muted">${a.range && a.range.source === 'dealer' ? `Using your number. <button class="btn-link small" data-a="clearExp" style="padding:0">Go back to the estimate</button>` : 'Your number replaces the estimate above and sets the target buy.'}</span>
-  </div>
-  <div class="card">
-    <span class="eyebrow">Target buy</span>
-    ${a.hideTarget
-      ? `<span class="mid">Confirm grade</span><button class="btn-ghost" data-a="go" data-s="grade">Pick the grade</button>`
-      : a.targetBuy == null
-        ? `<span class="mid">—</span><span class="small muted">Enter an expected sale price to get a target buy.</span>`
-        : `<span class="big"${a.limited ? ' style="color:var(--warn)"' : ''}>${a.limited ? '~' : ''}${money(a.targetBuy)}</span>
-           <span class="small muted">${pct(a.margin)} margin${feeOn() ? ' ' + feeNote() : ''}${a.limited ? ', from the low end of the AI estimate' : a.confirmed ? '' : ', from the low end until grade is confirmed'}${profitTxt ? ` · expected profit ${profitTxt}` : ''} · <button class="btn-link small" data-a="go" data-s="settings" style="padding:0">Change</button></span>`}
-  </div>
-
-  <div class="grid2">
-    <div class="tile"><span class="eyebrow">Melt</span>${a.melt > 0 ? `<b class="num">${money(a.melt)}</b>` : '<span class="small muted">No silver or gold</span>'}</div>
-    <div class="tile"><span class="eyebrow">CPG</span>${a.cpg.length ? `<b class="num">${a.cpg.map(money).join('–')}</b><a class="small" href="https://www.greysheet.com" target="_blank" rel="noopener" style="color:var(--accent)">via CDN</a>` : `<span class="small muted">${c.lookupPending ? 'Loading…' : c.gsMismatch ? 'No exact match' : 'Not found'}</span>`}</div>
-  </div>
+    <span class="small muted">${a.range && a.range.source === 'dealer' ? `Using your number. <button class="btn-link small" data-a="clearExp" style="padding:0">Go back to the estimate</button>` : 'Your number replaces the estimate and sets the target buy.'}</span>
+  </div>` : `<button class="btn-link small" data-a="compsOpen" style="align-self:flex-start;margin-top:-6px;padding:0">Comps say something different? Enter the price ›</button>`}
 
   ${actionArea(a)}
 
@@ -933,6 +930,11 @@ function ebayUrl(c) {
   if (c.slab && c.slab.service && c.slab.grade) q += ` ${c.slab.service} ${c.slab.grade}`;
   q = q.replace(/\s+/g, ' ').trim() + ' -lot -replica -copy -reproduction';
   return `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(q)}&_sacat=11116&LH_Sold=1&LH_Complete=1&_sop=13`;
+}
+const shortBasis = (r) => r.source === 'cpg' ? 'CPG retail, via CDN' : r.source === 'numista' ? 'Numista estimate (can lag sales)' : r.source === 'dealer' ? 'your comps price' : r.basis;
+function catalogWarning(c) {
+  if (!c.catalogConflict) return '';
+  return `<div class="feas warn"><b>Catalog match ignored</b><span class="small">Numista's closest entry ("${esc(c.catalogConflict)}") doesn't match this coin's denomination, so its specs and prices aren't used. Check the coin before relying on melt.</span></div>`;
 }
 // When catalog prices and Claude's date-specific estimate disagree a lot, say so instead of hiding it.
 function priceCheck(c, a) {
@@ -988,6 +990,14 @@ function actionArea(a) {
       <button class="btn-link small" data-a="sheet" data-v="">Cancel</button>
     </div>`;
   }
+  // Working a table: the lot you're on is one tap away.
+  const SL = S.sessionLot && S.lots.find((l) => l.id === S.sessionLot && l.kind !== 'singles' && l.status !== 'bought');
+  if (SL) return `<button class="btn-primary btn-wide" data-a="quickLot" data-v="buy">+ Add to ${esc(SL.name)}</button>
+    <div class="grid2">
+      <button class="btn-ghost" data-a="quickLot" data-v="maybe">Add as Maybe</button>
+      <button class="btn-ghost" data-a="sheet" data-v="bought">Bought it alone</button>
+    </div>
+    <div class="row between"><button class="btn-link small" data-a="sheet" data-v="lot" style="padding:0">Different lot ›</button><button class="btn-link small" data-a="scan" style="padding:0">Pass · scan next ›</button></div>`;
   return `<div class="grid2">
       <button class="btn-primary" data-a="sheet" data-v="bought">Bought it</button>
       <button class="btn-ghost" data-a="sheet" data-v="lot">Save to a lot</button>
@@ -1141,20 +1151,32 @@ screens.purchase = () => {
   return head + `
   ${P.status === 'bought' ? '<div class="toast">Bought. Tap Create listing on any coin when you\'re ready to sell.</div>' : ''}
   ${buyIdx.length ? `
+  ${P.status === 'bought' ? `
   <div class="card">
     <div class="grid2">
-      <div><span class="eyebrow">Estimated market</span><div class="mid" style="font-size:1.35rem">${money(T.low)}–${money(T.high)}</div></div>
-      <div><span class="eyebrow">Total melt</span><div class="mid" style="font-size:1.35rem">${money(T.meltTotal)}</div></div>
+      <div><span class="eyebrow">Paid</span><div class="pp">${money(T.cost)}</div></div>
+      <div><span class="eyebrow">Expected profit</span><div class="pp">${money(T.profitMid)}</div></div>
     </div>
-    ${maybeIdx.length ? `<span class="small muted">${buyIdx.length} coin${buyIdx.length === 1 ? '' : 's'} counted · ${maybeIdx.length} ${P.status === 'bought' ? 'not bought' : 'set aside'}, not counted</span>` : ''}
-  </div>
-  ${P.status === 'bought' ? '' : `
+    <span class="small muted">Estimated market ${money(T.low)}–${money(T.high)} · melt ${money(T.meltTotal)}${feeOn() ? ' · profit ' + feeNote() : ''}</span>
+  </div>` : `
   <div class="card">
-    <div class="row between"><span class="eyebrow">Target margin for this lot</span><b class="num" id="lmv">${pct(lm)}</b></div>
-    <input class="slider" id="lm" type="range" min="0" max="0.6" step="0.01" value="${lm}" aria-label="Target margin for this lot">
-    <div class="row between"><span>Max offer at ${pct(lm)}</span><b class="num">${money(T.maxOffer)}</b></div>
+    <span class="small muted">${buyIdx.length} coin${buyIdx.length === 1 ? '' : 's'} in offer${maybeIdx.length ? ` · ${maybeIdx.length} set aside` : ''} · market ${money(T.low)}–${money(T.high)} · melt ${money(T.meltTotal)}</span>
+    <div class="grid2">
+      <div><span class="eyebrow">Your max offer</span><div class="pp">${money(T.maxOffer)}</div><span class="small muted">at ${pct(lm)} margin</span></div>
+      <label class="field" for="asking" style="gap:6px"><span class="eyebrow" style="margin:0">Seller asking</span>
+        <input id="asking" type="number" inputmode="decimal" min="0" placeholder="$" value="${esc(P.asking || '')}"></label>
+    </div>
+    <div id="verdict">${verdict(T, P) || '<span class="small muted">Enter what the seller wants to see if it works.</span>'}</div>
   </div>`}
-  <div class="card" id="lotcalc">${lotCalcInner(T)}</div>
+  <details id="lotmore" ${S.lotMoreOpen ? 'open' : ''}><summary>${P.status === 'bought' ? 'Cost details ›' : 'Margin, your offer and profit ›'}</summary>
+    <div class="stack" style="margin-top:8px">
+      ${P.status === 'bought' ? '' : `<div class="card">
+        <div class="row between"><span class="eyebrow">Target margin for this lot</span><b class="num" id="lmv">${pct(lm)}</b></div>
+        <input class="slider" id="lm" type="range" min="0" max="0.6" step="0.01" value="${lm}" aria-label="Target margin for this lot">
+      </div>`}
+      <div class="card" id="lotcalc">${lotCalcInner(T)}</div>
+    </div>
+  </details>
   <div class="card">
     <span class="eyebrow">${P.status === 'bought' ? 'Bought' : 'In my offer'} · ${buyIdx.length} · tap a cost to edit</span>
     ${buyIdx.map((i) => itemRow(P, rows[i], i, T)).join('')}
@@ -1218,9 +1240,6 @@ function verdict(T, P) {
 function lotCalcInner(T) {
   const P = S.purchase;
   return `
-    ${P.status === 'bought' ? '' : `<label class="field" for="asking">Seller asking for the lot`}
-      ${P.status === 'bought' ? '' : `<input id="asking" type="number" inputmode="decimal" min="0" placeholder="What are they asking?" value="${esc(P.asking || '')}"></label>
-    ${verdict(T, P)}`}
     <label class="field" for="lot">${P.status === 'bought' ? 'What you paid for the lot' : 'Your offer for the whole lot'}
       <input id="lot" type="number" inputmode="decimal" min="0" placeholder="Sum of coin costs: ${money(T.costEntered)}" value="${esc(P.lotOffer)}"></label>
     <div class="grid2">
@@ -1457,11 +1476,23 @@ function blobToBase64(b) {
 const BUCKET = (n) => n >= 60 ? 'UNC' : n >= 50 ? 'AU' : n >= 40 ? 'XF' : n >= 20 ? 'VF' : n >= 12 ? 'F' : n >= 8 ? 'VG' : null;
 const NUMISTA_GRADE = { vg: 'VG', f: 'F', vf: 'VF', xf: 'XF', ef: 'XF', au: 'AU', unc: 'UNC', bu: 'UNC' };
 
+// "1 Balboa" vs Numista "1/10 Balboa (Silver Pattern)": same unit, different amount, or a pattern piece.
+function denomParts(str) {
+  const m = String(str || '').match(/(\d+\s*\/\s*\d+|\d+(?:\.\d+)?)\s+([A-Za-z\u00C0-\u017F]+)/);
+  return m ? { n: m[1].replace(/\s/g, ''), u: m[2].toLowerCase().replace(/(es|s)$/, '') } : null;
+}
+function catalogConflict(coin, n) {
+  const a = denomParts(coin.denomination), b = denomParts(n.title);
+  if (a && b && a.u === b.u && a.n !== b.n) return true;
+  if (/pattern|essai|piedfort|trial strike/i.test(n.title || '') && !/pattern|essai|piedfort|trial/i.test(coin.name || '')) return true;
+  return false;
+}
 function mergeLookup(coin, L) {
   if (!coin || !L) return;
   coin.lookup = L;
   const n = L.numista;
-  if (n && n.matched) {
+  coin.catalogConflict = n && n.matched && catalogConflict(coin, n) ? n.title : null;
+  if (n && n.matched && !coin.catalogConflict) {
     coin.numista = `N# ${n.id}`; coin.numistaUrl = n.url; coin.numistaTitle = n.title;
     if (n.km) coin.km = n.km;
     if (n.composition) coin.composition = n.composition;
@@ -1702,7 +1733,9 @@ async function runIdentify(hints, opts = {}) {
     S.fields = { country: S.coin.country, denomination: S.coin.denomination, year: S.coin.year, mint: S.coin.mint };
     S.expSale = ''; S.cost = ''; S.candidates = false; S.manual = false;
     S.log.push({ at: new Date().toISOString(), hints: hints || '', result: r.coin_name, confidence: r.confidence, seconds: S.idSeconds });
-    go(opts.next || 'fields');
+    // Confident, nothing flagged: go straight to the match (it still has "Edit details").
+    const confident = r.confidence === 'High' && !(S.coin.uncertain || []).length;
+    go(opts.next || (confident ? 'match' : 'fields'));
   } catch (e) {
     if (e && e.code === 'cancelled') return go('capture');
     if (e && e.code === 'need_code') { store.set('cs.code', ''); S.codeWrong = true; S.pending = { hints, opts }; return go('code'); }
@@ -1748,7 +1781,7 @@ document.addEventListener('click', (e) => {
   const a = t.dataset.a;
   if (a === 'go') return go(t.dataset.s);
   if (a === 'back') return go(prevScreen);
-  if (a === 'scan') { Object.assign(S, { sheet: '', paid: null, newLotName: '', lotStatus: 'buy', wrongScanId: null, photos: {}, files: {}, coin: null, fields: null, ai: null, cost: '', expSale: '', added: false, candidates: false, feedback: null, confirmClear: false, manual: false, idUnavailable: false }); return go('capture'); }
+  if (a === 'scan') { Object.assign(S, { compsOpen: false, sheet: '', paid: null, newLotName: '', lotStatus: 'buy', wrongScanId: null, photos: {}, files: {}, coin: null, fields: null, ai: null, cost: '', expSale: '', added: false, candidates: false, feedback: null, confirmClear: false, manual: false, idUnavailable: false }); return go('capture'); }
   if (a === 'demo') { Object.assign(S, { photos: {}, files: {}, coin: null, cost: '', expSale: '', added: false, candidates: false, feedback: null, idUnavailable: false }); return go('pick'); }
   if (a === 'saveCode') {
     const v = document.getElementById('code').value.trim();
@@ -1830,6 +1863,14 @@ document.addEventListener('click', (e) => {
     lot.updated = Date.now(); S.purchase = lot; S.sheet = ''; S.paid = null; S.newLotName = '';
     save(); return render();
   }
+  if (a === 'quickLot') {
+    const lot = S.lots.find((l) => l.id === S.sessionLot); if (!lot) return;
+    const an = analyze(S.coin, S.grades, S.confirmed, S.cost, null, S.expSale);
+    const cost = an.cost ?? an.targetBuy ?? (an.melt > 0 ? an.melt : 0);
+    lot.items.push(itemFromCurrent(cost, t.dataset.v)); lot.updated = Date.now(); S.purchase = lot;
+    S.added = { kind: 'lot', lot: lot.id, status: t.dataset.v };
+    save(); return render();
+  }
   if (a === 'itemStatus') { S.purchase.items[+t.dataset.i].status = t.dataset.v; S.purchase.updated = Date.now(); save(); return render(); }
   if (a === 'itemListing') {
     const it = S.purchase.items[+t.dataset.i]; if (!it || it.quick) return;
@@ -1883,7 +1924,8 @@ document.addEventListener('click', (e) => {
     if (FEE_PRESETS[ch]) { S.settings.fee.pct = FEE_PRESETS[ch].pct; S.settings.fee.fixed = FEE_PRESETS[ch].fixed; }
     save(); return render();
   }
-  if (a === 'clearExp') { S.expSale = ''; return render(); }
+  if (a === 'clearExp') { S.expSale = ''; S.compsOpen = false; return render(); }
+  if (a === 'compsOpen') { S.compsOpen = true; render(); const el = document.getElementById('expsale'); if (el) el.focus(); return; }
   if (a === 'fastMode') { store.set('cs.fast', t.dataset.v === '1'); return render(); }
   if (a === 'askClear') { S.confirmClear = true; return render(); }
   if (a === 'cancelClear') { S.confirmClear = false; return render(); }
@@ -1902,7 +1944,7 @@ document.addEventListener('click', (e) => {
   }
 });
 
-document.addEventListener('toggle', (e) => { if (e.target && e.target.id === 'more') S.moreOpen = e.target.open; }, true);
+document.addEventListener('toggle', (e) => { if (e.target && e.target.id === 'more') S.moreOpen = e.target.open; if (e.target && e.target.id === 'lotmore') S.lotMoreOpen = e.target.open; }, true);
 
 document.addEventListener('input', (e) => {
   const el = e.target;
@@ -1936,8 +1978,7 @@ document.addEventListener('input', (e) => {
   if (el.dataset && el.dataset.inote != null) { S.purchase.items[+el.dataset.inote].note = el.value; save(); return; }
   if (el.id === 'asking') {
     S.purchase.asking = el.value; save();
-    const box = document.getElementById('lotcalc'); box.innerHTML = lotCalcInner(lotTotals());
-    const ni = document.getElementById('asking'); ni.focus(); try { ni.setSelectionRange(ni.value.length, ni.value.length); } catch (_) {}
+    const v = document.getElementById('verdict'); if (v) v.innerHTML = verdict(lotTotals(), S.purchase) || '<span class="small muted">Enter what the seller wants to see if it works.</span>';
     return;
   }
   if (el.id === 'lot') {
