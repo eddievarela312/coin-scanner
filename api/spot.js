@@ -3,8 +3,11 @@
 import { env } from '../lib/env.js';
 
 export default async function handler(req, res) {
-  const key = env('METALS_DEV_API_KEY', 'METALSDEV_API_KEY', 'METALS_API_KEY', 'METALS_DEV_KEY');
-  if (!key) return res.status(200).json({ ok: false, error: 'Add METALS_DEV_API_KEY in Vercel, then redeploy.' });
+  // Accept the usual names, or any setting with "METAL" in its name.
+  const metalNames = Object.keys(process.env).filter((k) => /METAL/i.test(k));
+  const key = env('METALS_DEV_API_KEY', 'METALSDEV_API_KEY', 'METALS_API_KEY', 'METALS_DEV_KEY')
+    || (metalNames.length ? String(process.env[metalNames[0]] || '').trim() : '');
+  if (!key) return res.status(200).json({ ok: false, error: 'Add METALS_DEV_API_KEY in Vercel, then redeploy.', metal_settings_found: metalNames });
   try {
     const r = await fetch(`https://api.metals.dev/v1/latest?api_key=${encodeURIComponent(key)}&currency=USD&unit=toz`, { headers: { Accept: 'application/json' } });
     const j = await r.json().catch(() => null);
