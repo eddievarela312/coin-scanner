@@ -479,7 +479,8 @@ function aiRange(coin, g, expSale) {
   const cpg = g.map((k) => coin.cpg && coin.cpg[k]).filter((v) => v > 0);
   if (cpg.length) {
     const lo = Math.max(Math.min(...cpg) * 0.85, m), hi = Math.max(Math.max(...cpg), m);
-    return { low: lo, high: hi, mid: Math.round((lo + hi) / 2 * 100) / 100, basis: 'CPG retail (85–100%), via CDN', grades: g, source: 'cpg' };
+    const belowMelt = Math.max(...cpg) < m;
+    return { low: lo, high: hi, mid: Math.round((lo + hi) / 2 * 100) / 100, basis: belowMelt ? 'melt value (CPG retail is below melt)' : 'CPG retail (85–100%), via CDN', grades: g, source: 'cpg' };
   }
   const nv = g.map((k) => coin.numistaVal && coin.numistaVal[k]).filter((v) => v > 0);
   if (nv.length) {
@@ -1008,6 +1009,8 @@ function mergeLookup(coin, L) {
     if (n.issue && n.issue.mintage) coin.mintage = Number(n.issue.mintage).toLocaleString('en-US');
     coin.refImages = null; // Numista blocks embedding its member photos; link to the Numista page instead
     coin.varieties = n.issue && n.issue.varieties ? n.issue.varieties : null;
+    // Numista says no silver or gold: there is no melt value, whatever Claude guessed.
+    if (n.composition && !/silver|gold|platinum|palladium|billon/i.test(n.composition)) { coin.asw = null; coin.agw = null; }
     // Recompute precious-metal content from Numista weight + fineness when both are clear.
     const fm = String(n.composition || '').match(/(?:0?\.(\d{3,4}))|(\b9\d{2}\b)/);
     const fine = fm ? parseFloat(fm[1] ? '0.' + fm[1] : '0.' + fm[2]) : null;
@@ -1045,8 +1048,10 @@ function bucketize(prices) {
     if (r.grey) (grey[b] = grey[b] || []).push(r.grey);
   }
   const cpg = Object.fromEntries(Object.entries(by).map(([k, v]) => [k, median(v)]));
-  const all = (prices || []).map((r) => r.cpg).filter(Boolean);
-  if (all.length) cpg.ANY = Math.min(...all);
+  // "Any grade" (bullion-type coins): CPG of the lowest real grade on the table (G4 or better).
+  const graded = (prices || []).filter((r) => r.cpg && (r.grade || parseInt(String(r.label || '').replace(/\D/g, ''), 10) || 0) >= 4)
+    .sort((a, b) => (a.grade || 0) - (b.grade || 0));
+  if (graded.length) cpg.ANY = graded[0].cpg;
   return {
     cpg,
     cpgRange: Object.fromEntries(Object.entries(by).map(([k, v]) => [k, [Math.min(...v), Math.max(...v)]])),
@@ -1126,7 +1131,8 @@ Reply with only this JSON object:
 Rules:
 - identified: false if you cannot tell what the coin is.
 - uncertain_fields uses only: country, denomination, year, mint_mark.
-- is_bullion_like: true when value is mostly metal (90% US silver in circulated grades, modern bullion, gold bullion coins). Then suggested_grades is [] and rough_value_usd uses the key "ANY".
+- is_bullion_like: true ONLY for common coins traded at melt: modern bullion (Eagles, Maples, Libertads, Pandas, bars), gold bullion coins (e.g. Mexican 50 Pesos), and common 1940s-1964 US 90% silver (Roosevelt and Mercury dimes, Washington quarters, Franklin and 1964 Kennedy halves) in circulated grades. Barber, Seated Liberty, Bust, Morgan, Peace, key dates and world coins are NOT bullion-like. When true, suggested_grades is [] and rough_value_usd uses the key "ANY".
+- asw_oz / agw_oz: only when the coin actually contains silver / gold. Copper, brass, nickel, copper-nickel and aluminum coins get null.
 - grade_sensitive: true when one grade step changes value a lot (key dates, mint-state Morgans, high-grade type coins).
 - slab: null, or {"service": "PCGS", "grade": "MS63", "cert": "", "label_text": "", "pcgs_number": "", "ngc_id": ""}. On PCGS labels the coin number is printed with the cert (e.g. "7296.63/12345678": coin number 7296, grade 63). Copy numbers exactly as printed; leave "" if not readable.
 - suggested_grades: one or two adjacent grades from VG, F, VF, XF, AU, UNC.

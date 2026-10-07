@@ -43,7 +43,8 @@ Reply with only this JSON object:
 Rules:
 - identified: false if you cannot tell what the coin is.
 - uncertain_fields uses only: country, denomination, year, mint_mark.
-- is_bullion_like: true when value is mostly metal (90% US silver in circulated grades, modern bullion, gold bullion coins). Then suggested_grades is [] and rough_value_usd uses the key "ANY".
+- is_bullion_like: true ONLY for common coins traded at melt: modern bullion (Eagles, Maples, Libertads, Pandas, bars), gold bullion coins (e.g. Mexican 50 Pesos), and common 1940s-1964 US 90% silver (Roosevelt and Mercury dimes, Washington quarters, Franklin and 1964 Kennedy halves) in circulated grades. Barber, Seated Liberty, Bust, Morgan, Peace, key dates and world coins are NOT bullion-like. When true, suggested_grades is [] and rough_value_usd uses the key "ANY".
+- asw_oz / agw_oz: only when the coin actually contains silver / gold. Copper, brass, nickel, copper-nickel and aluminum coins get null.
 - grade_sensitive: true when one grade step changes value a lot (key dates, mint-state Morgans, high-grade type coins).
 - slab: null, or {"service": "PCGS", "grade": "MS63", "cert": "", "label_text": "", "pcgs_number": "", "ngc_id": ""}. On PCGS labels the coin number is printed with the cert (e.g. "7296.63/12345678": coin number 7296, grade 63). Copy numbers exactly as printed; leave "" if not readable.
 - suggested_grades: one or two adjacent grades from VG, F, VF, XF, AU, UNC.
