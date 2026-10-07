@@ -49,9 +49,10 @@ Rules:
 - grade_sensitive: true when one grade step changes value a lot (key dates, mint-state Morgans, high-grade type coins).
 - slab: null, or {"service": "PCGS", "grade": "MS63", "cert": "", "label_text": "", "pcgs_number": "", "ngc_id": ""}. On PCGS labels the coin number is printed with the cert (e.g. "7296.63/12345678": coin number 7296, grade 63). Copy numbers exactly as printed; leave "" if not readable.
 - suggested_grades: one or two adjacent grades from VG, F, VF, XF, AU, UNC.
-- candidates: 2 to 4 OTHER likely coins, including close dates, mint marks and varieties, each with a short reason.
+- candidates: 2 to 3 OTHER likely coins, including close dates, mint marks and varieties, each with a short reason.
 - rough_value_usd: approximate typical US retail ranges for the grades in question, from general knowledge, only where you have a reasonable sense; otherwise {}. These are shown to the dealer labeled as rough estimates.
 - weights in grams, ASW/AGW in troy ounces.
+- Keep it short: this JSON is read on a phone mid-negotiation. grade_note under 12 words; each candidate "why" under 10 words; photo_feedback under 12 words. No text outside the JSON.
 - photo_feedback: one short tip if the photos limited you (glare, blur, too small), else "".
 - rarity: flag coins a dealer must not undervalue. level is "key" (a famous key date/mint of its series, e.g. 1916-D Mercury dime, 1909-S VDB cent, 1893-S Morgan, 1932-D/S Washington quarter), "semi-key" (scarcer date/mint that sells well above common dates, e.g. 1921-D Mercury dime, 1914-D cent), "variety" (a known valuable variety or error this date could be, e.g. 1955 doubled die cent, 1942/1 dime, 1937-D 3-legged buffalo; say what to look for), "scarce" (low-mintage or rarely seen world/colonial issue), or "" for ordinary dates. Only flag when you are confident this exact date/mint/assayer combination qualifies; never flag common dates. note: one short sentence on why (include mintage if you know it). check: one short sentence on what to verify, e.g. counterfeit or altered-date risk, or the diagnostic to look for. Use "" for both when level is "".
 - Mint marks and assayer initials must agree: on Spanish colonial and Latin American coins, check that the assayer initials belong to that mint and year (e.g. 1769 Mexico City is Mo-MF; JM is a Lima assayer). If they conflict, trust the clearer of the two, list mint_mark as uncertain, and lower confidence.
@@ -80,13 +81,19 @@ export default async function handler(req, res) {
   if (images.some((x) => x.length > MAX_IMAGE_B64)) return res.status(413).json({ error: 'image_rejected' });
 
   const tester = String(req.headers['x-tester'] || '').slice(0, 60);
+  const fast = req.headers['x-fast'] === '1';
+  const model = fast ? (process.env.FAST_MODEL || 'claude-haiku-4-5-20251001') : MODEL;
   const t0 = Date.now();
+  const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+  const rand = Math.random().toString(36).slice(2, 8);
+  // Start saving the photos now, in parallel with Claude, so logging adds no wait at the end.
+  const uploads = loggingOn()
+    ? Promise.all(images.map((b64, i) => uploadPhoto(`${stamp}-${rand}-${i ? 'rev' : 'obv'}.jpg`, b64).catch(() => null))).catch(() => [])
+    : Promise.resolve([]);
   // Save the scan (photos + result) for accuracy review. Never blocks a scan on failure.
   const log = async (fields) => {
     if (!loggingOn()) return null;
-    const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
-    const rand = Math.random().toString(36).slice(2, 8);
-    const paths = (await Promise.all(images.map((b64, i) => uploadPhoto(`${stamp}-${rand}-${i ? 'rev' : 'obv'}.jpg`, b64)))).filter(Boolean);
+    const paths = (await uploads).filter(Boolean);
     return insertScan({ tester, hints, photo_paths: paths, server_ms: Date.now() - t0, ...fields });
   };
 
@@ -105,7 +112,7 @@ export default async function handler(req, res) {
         ...(process.env.ANTHROPIC_WORKSPACE_ID ? { 'anthropic-workspace-id': process.env.ANTHROPIC_WORKSPACE_ID } : {}),
         'content-type': 'application/json',
       },
-      body: JSON.stringify({ model: MODEL, max_tokens: 2000, messages: [{ role: 'user', content }] }),
+      body: JSON.stringify({ model, max_tokens: 2000, messages: [{ role: 'user', content }] }),
     });
   } catch (e) {
     const detail = 'Could not reach Claude: ' + String(e && e.message || e);
@@ -124,9 +131,10 @@ export default async function handler(req, res) {
   }
 
   const out = await r.json();
+  const claudeMs = Date.now() - t0;
   const text = (out.content || []).filter((c) => c.type === 'text').map((c) => c.text).join('');
   const json = extractJson(text);
   if (!json) { await log({ error: 'invalid_json', result: { raw: text.slice(0, 2000) } }); return res.status(502).json({ error: 'invalid_json' }); }
-  const scanId = await log({ coin_name: json.coin_name || null, confidence: json.confidence || null, result: json });
-  return res.status(200).json({ ...json, scan_id: scanId });
+  const scanId = await log({ coin_name: json.coin_name || null, confidence: json.confidence || null, result: { ...json, _model: model, _claude_ms: claudeMs } });
+  return res.status(200).json({ ...json, scan_id: scanId, claude_ms: claudeMs, model });
 }

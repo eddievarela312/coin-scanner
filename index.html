@@ -775,7 +775,7 @@ function aiMatch(c) {
   }
   return `
   <div class="topbar"><button class="back" data-a="go" data-s="fields">Edit details</button><span class="pill ${tone(conf === 'High' ? 'Likely' : conf === 'Medium' ? 'Possible' : 'Unlikely')}">${esc(conf)} confidence</span></div>
-  <p class="eyebrow">Match found${S.idSeconds ? ` · ${S.idSeconds}s` : ''}</p>
+  <p class="eyebrow">Match found${S.idSeconds ? ` · ${S.idSeconds}s` : ''}${S.ai && S.ai.claude_ms ? ` (Claude ${Math.round(S.ai.claude_ms / 1000)}s)` : ''}${S.ai && /haiku/i.test(S.ai.model || '') ? ' · Fast mode' : ''}</p>
   <h2>${esc(c.name)}</h2>
   ${rarityBanner(c)}
   ${photos}
@@ -1360,6 +1360,11 @@ screens.settings = () => `
     <p class="small muted">Target buys and profits subtract these fees. Defaults are estimates; check your current rates.</p>
   </div>
   <div class="card">
+    <span class="eyebrow">Fast mode (test)</span>
+    <div class="seg"><button class="${store.get('cs.fast', false) ? '' : 'on'}" data-a="fastMode" data-v="0">Standard</button><button class="${store.get('cs.fast', false) ? 'on' : ''}" data-a="fastMode" data-v="1">Fast</button></div>
+    <p class="small muted">Fast uses a quicker, lighter Claude model. Usually a few seconds faster, but may misread small mint marks and dates more often. Compare both on coins you know before the show.</p>
+  </div>
+  <div class="card">
     <label class="field" for="foot">Listing footer (optional)<textarea id="foot" rows="4" style="font:inherit;width:100%;padding:12px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--ink)" placeholder="Shipping, returns, combined shipping…">${esc(store.get('cs.footer', ''))}</textarea></label>
     <p class="small muted">Added to the end of every listing description.</p>
   </div>
@@ -1512,7 +1517,7 @@ async function serverJson(hints, images, signal) {
   const payload = { hints: hints || '', images: await Promise.all(images.map(blobToBase64)) };
   const res = await fetch('/api/identify', {
     method: 'POST', signal,
-    headers: { 'Content-Type': 'application/json', 'X-Access-Code': store.get('cs.code', ''), 'X-Tester': store.get('cs.tester', '') },
+    headers: { 'Content-Type': 'application/json', 'X-Access-Code': store.get('cs.code', ''), 'X-Tester': store.get('cs.tester', ''), ...(store.get('cs.fast', false) ? { 'X-Fast': '1' } : {}) },
     body: JSON.stringify(payload),
   }).catch((e) => { throw { code: e && e.name === 'AbortError' ? 'cancelled' : 'network' }; });
   if (res.status === 401) throw { code: 'need_code' };
@@ -1696,7 +1701,7 @@ function toJpegBlob(file, max) {
       cv.width = Math.round(img.width * k); cv.height = Math.round(img.height * k);
       cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
       URL.revokeObjectURL(url);
-      cv.toBlob((b) => resolve(b), 'image/jpeg', 0.9);
+      cv.toBlob((b) => resolve(b), 'image/jpeg', 0.85);
     };
     img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
     img.src = url;
@@ -1845,6 +1850,7 @@ document.addEventListener('click', (e) => {
     if (FEE_PRESETS[ch]) { S.settings.fee.pct = FEE_PRESETS[ch].pct; S.settings.fee.fixed = FEE_PRESETS[ch].fixed; }
     save(); return render();
   }
+  if (a === 'fastMode') { store.set('cs.fast', t.dataset.v === '1'); return render(); }
   if (a === 'askClear') { S.confirmClear = true; return render(); }
   if (a === 'cancelClear') { S.confirmClear = false; return render(); }
 
@@ -1920,7 +1926,7 @@ document.addEventListener('change', (e) => {
     const side = S.photos.obv ? 'rev' : 'obv';
     const file = el.files[0];
     S.files[side] = null;
-    toJpegBlob(file, 1600).then((b) => { S.files[side] = b; });
+    toJpegBlob(file, 1568).then((b) => { S.files[side] = b; });
     shrink(file, 900, (url) => {
       if (!url) return;
       S.photos[side] = url;
