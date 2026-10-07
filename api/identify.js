@@ -39,7 +39,8 @@ Reply with only this JSON object:
  "candidates": [{"coin_name": "", "why": ""}],
  "rough_value_usd": {"VF": [60, 80]},
  "photo_feedback": "",
- "rarity": {"level": "", "note": "", "check": ""}
+ "rarity": {"level": "", "note": "", "check": ""},
+ "countermark": null
 }
 Rules:
 - identified: false if you cannot tell what the coin is.
@@ -53,6 +54,7 @@ Rules:
 - rough_value_usd: must be for THIS exact date and mint, not the type in general (key and scarce dates sell well above common dates). Approximate typical US retail ranges for the grades in question, from general knowledge, only where you have a reasonable sense; otherwise {}. These are shown to the dealer labeled as rough estimates.
 - weights in grams, ASW/AGW in troy ounces.
 - Keep it short: this JSON is read on a phone mid-negotiation. grade_note under 12 words; each candidate "why" under 10 words; photo_feedback under 12 words. No text outside the JSON.
+- countermark: null, or when the coin carries a countermark/counterstamp/chop/overstrike: {"description": "e.g. Guatemala 1838 sun-over-volcano countermark", "issuer": "who applied it, if known", "host": "the underlying coin, e.g. Peru 8 Reales 1830s"}. Look carefully for small punched marks on either side. For countermarked coins: coin_name names BOTH (e.g. "Guatemala countermark on Peru 8 Reales"), country/denomination/year describe the HOST coin, numista_query names the countermark type if Numista lists one (e.g. "Countermarked 8 Reales"), and rough_value_usd prices the countermarked piece (the countermark usually drives the value; authenticity of the mark matters most).
 - photo_feedback: one short tip if the photos limited you (glare, blur, too small), else "".
 - rarity: flag coins a dealer must not undervalue, for ANY country (world, Latin American and colonial coins included, not only famous US keys). Judge the date against the other dates of the SAME type: if this date/mint typically sells for clearly more (about 1.5x or more) than the common dates of that type in the same grade, it is at least "semi-key"; if it is the scarcest or most expensive regular date of the type, it is "key". level is "key" (a famous key date/mint of its series, e.g. 1916-D Mercury dime, 1909-S VDB cent, 1893-S Morgan, 1932-D/S Washington quarter), "semi-key" (scarcer date/mint that sells well above common dates, e.g. 1921-D Mercury dime, 1914-D cent), "variety" (a known valuable variety or error this date could be, e.g. 1955 doubled die cent, 1942/1 dime, 1937-D 3-legged buffalo; say what to look for), "scarce" (low-mintage or rarely seen world/colonial issue), or "" for ordinary dates. Only flag when you are confident this exact date/mint/assayer combination qualifies; never flag common dates. note: one short sentence on why (include mintage if you know it). check: one short sentence on what to verify, e.g. counterfeit or altered-date risk, or the diagnostic to look for. Use "" for both when level is "".
 - Mint marks and assayer initials must agree: on Spanish colonial and Latin American coins, check that the assayer initials belong to that mint and year (e.g. 1769 Mexico City is Mo-MF; JM is a Lima assayer). If they conflict, trust the clearer of the two, list mint_mark as uncertain, and lower confidence.

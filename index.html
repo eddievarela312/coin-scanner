@@ -513,6 +513,11 @@ function rarityOf(c) {
   if (!c.skipGrade && n > 0 && n < 50000) return { level: 'lowmintage', note: `Only ${n.toLocaleString('en-US')} minted.`, check: '' };
   return null;
 }
+function countermarkBanner(c) {
+  if (!c || !c.countermark) return '';
+  const k = c.countermark;
+  return `<div class="feas warn"><b>Countermarked coin</b><span class="small">${esc(k.description)}${k.host ? ` on ${esc(k.host)}` : ''}${k.issuer ? ` · applied by ${esc(k.issuer)}` : ''}.</span><span class="small">Catalog prices are for the plain coin underneath, so they aren't used. The countermark usually sets the value: check its authenticity and look at comps for countermarked examples.</span></div>`;
+}
 function rarityBanner(c) {
   const r = rarityOf(c); if (!r) return '';
   const strong = r.level === 'key' || r.level === 'semi-key';
@@ -553,6 +558,13 @@ function aiRange(coin, g, expSale) {
   const m = melt(coin, spot());
   const exp = parseFloat(expSale);
   if (exp > 0) return { low: exp, high: exp, mid: exp, basis: 'your comps number', grades: g, source: 'dealer' };
+  // Countermarked: catalog prices are for the plain host coin, which can be far off. Use the estimate and comps.
+  if (coin.countermark) {
+    const parts = g.map((k) => coin.aiValue && coin.aiValue[k]).filter((v) => Array.isArray(v) && v.length === 2 && v[1] > 0);
+    if (!parts.length) return null;
+    const lo = Math.max(Math.min(...parts.map((p) => +p[0])), m), hi = Math.max(Math.max(...parts.map((p) => +p[1])), m);
+    return { low: lo, high: hi, mid: Math.round((lo + hi) / 2 * 100) / 100, basis: 'Claude\'s rough estimate for the countermarked coin', grades: g, source: 'ai', cm: true };
+  }
   const cpg = g.map((k) => coin.cpg && coin.cpg[k]).filter((v) => v > 0);
   if (cpg.length) {
     const lo = Math.max(Math.min(...cpg) * 0.85, m), hi = Math.max(Math.max(...cpg), m);
@@ -791,6 +803,7 @@ function aiMatch(c) {
   <div class="topbar"><button class="back" data-a="go" data-s="fields">Edit details</button><span class="pill ${tone(conf === 'High' ? 'Likely' : conf === 'Medium' ? 'Possible' : 'Unlikely')}">${esc(conf)} confidence</span></div>
   <p class="eyebrow">Match found${S.idSeconds ? ` · ${S.idSeconds}s` : ''}${S.ai && /haiku/i.test(S.ai.model || '') ? ' · Fast mode' : ''}</p>
   <h2>${esc(c.name)}</h2>
+  ${countermarkBanner(c)}
   ${rarityBanner(c)}
   ${photos}
   ${c.numistaUrl ? `<p class="small muted">Numista match: ${esc(c.numistaTitle || '')}</p>` + `<a class="btn btn-ghost btn-wide" href="${esc(c.numistaUrl)}" target="_blank" rel="noopener">Compare with Numista photos · ${esc(c.numista)} ›</a>` : c.lookupPending ? '<p class="small muted">Checking Numista…</p>' : ''}
@@ -875,6 +888,7 @@ screens.money = () => {
     ${idl ? `<span class="small muted">${esc(idl)}</span>` : ''}
     ${c.lookupPending ? '<span class="small muted">Checking Numista and Greysheet…</span>' : ''}
   </div>
+  ${countermarkBanner(c)}
   ${rarityBanner(c)}
 
   ${c.gsVarieties ? `<div class="card"><span class="eyebrow">Which variety?</span>
@@ -900,7 +914,7 @@ screens.money = () => {
   </div>
   <div class="row" style="gap:18px;margin-top:-4px">
     <span class="small"><span class="muted">Melt</span> <b class="num">${a.melt > 0 ? money(a.melt) : 'none'}</b></span>
-    <span class="small"><span class="muted">CPG</span> ${a.cpg.length ? `<b class="num">${a.cpg.map(money).join('–')}</b> <a href="https://www.greysheet.com" target="_blank" rel="noopener" style="color:var(--accent)">via CDN</a>` : `<b>${c.lookupPending ? 'loading…' : 'not found'}</b>`}</span>
+    <span class="small"><span class="muted">CPG</span> ${c.countermark ? '<b>n/a for countermarks</b>' : a.cpg.length ? `<b class="num">${a.cpg.map(money).join('–')}</b> <a href="https://www.greysheet.com" target="_blank" rel="noopener" style="color:var(--accent)">via CDN</a>` : `<b>${c.lookupPending ? 'loading…' : 'not found'}</b>`}</span>
   </div>
   ${priceCheck(c, a)}
   ${compsButton(c)}
@@ -926,9 +940,11 @@ screens.money = () => {
 
 // eBay sold search for this exact coin (opens eBay; nothing is scraped).
 function ebayUrl(c) {
-  let q = String(c.name || '').replace(/\(.*?\)/g, ' ').replace(/[,;]/g, ' ');
+  // Plain words a person would type: no parentheses, no search operators.
+  let q = String(c.name || '').replace(/\(.*?\)/g, ' ').split(/[,;:]/)[0];
+  if (c.countermark && !/countermark|counterstamp|chop/i.test(q)) q += ' countermark';
   if (c.slab && c.slab.service && c.slab.grade) q += ` ${c.slab.service} ${c.slab.grade}`;
-  q = q.replace(/\s+/g, ' ').trim() + ' -lot -replica -copy -reproduction';
+  q = q.replace(/\s+/g, ' ').trim();
   return `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(q)}&_sacat=11116&LH_Sold=1&LH_Complete=1&_sop=13`;
 }
 const shortBasis = (r) => r.source === 'cpg' ? 'CPG retail, via CDN' : r.source === 'numista' ? 'Numista estimate (can lag sales)' : r.source === 'dealer' ? 'your comps price' : r.basis;
@@ -1044,7 +1060,7 @@ screens.sales = () => {
   <h2>Sold prices</h2>
   <p class="small muted">${esc(c.name)}${c.skipGrade ? '' : ` · compare against ${esc(gradeLabel(c, a.grades))} coins`}</p>
   ${compsButton(c)}
-  <p class="small muted" style="margin-top:-6px">eBay sold listings, newest first. Lots, replicas and copies are filtered out.</p>
+  <p class="small muted" style="margin-top:-6px">eBay sold listings, newest first.</p>
   ${c.sales && c.sales.length ? `<div class="card"><div class="tablewrap"><table>
     <thead><tr><th>Date</th><th>Grade</th><th class="r">Price</th></tr></thead>
     <tbody>${c.sales.map((x) => `<tr class="${a.grades.includes(x.grade) ? 'hl' : ''}"><td class="num">${x.date}</td><td>${x.grade === 'ANY' ? '—' : x.grade}</td><td class="r num">${money(x.price)}</td></tr>`).join('')}</tbody>
@@ -1317,6 +1333,7 @@ async function makeListing() {
     variety: c.gsVariety != null && c.gsVarieties ? c.gsVarieties[c.gsVariety].name : null,
     km: c.km, composition: c.composition, fineness: c.fineness, weight: c.weight, diameter: c.diameter,
     asw: c.asw, agw: c.agw, slab: c.slab || null, bullion: !!c.skipGrade,
+    countermark: c.countermark ? `${c.countermark.description}${c.countermark.host ? ' on ' + c.countermark.host : ''}` : null,
     rarity: c.rarity && (c.rarity.level === 'key' || c.rarity.level === 'semi-key') ? `${RARITY[c.rarity.level]}. ${c.rarity.note}` : null,
     grade: c.slab ? null : (c.skipGrade ? null : (a.confirmed ? gradeLabel(c, a.grades) + ' (raw, seller\'s opinion)' : null)),
   };
@@ -1683,6 +1700,7 @@ function coinFromAI(r) {
     slab: r.slab && (r.slab.service || r.slab.grade) ? r.slab : null,
     gradeNote: r.grade_note || '', confidence: ['High', 'Medium', 'Low'].includes(r.confidence) ? r.confidence : 'Medium',
     photoFeedback: r.photo_feedback || '',
+    countermark: r.countermark && (r.countermark.description || r.countermark.host) ? { description: String(r.countermark.description || 'Countermark'), issuer: String(r.countermark.issuer || ''), host: String(r.countermark.host || '') } : null,
     rarity: r.rarity && RARITY[r.rarity.level] ? { level: r.rarity.level, note: String(r.rarity.note || ''), check: String(r.rarity.check || '') } : null,
   };
 }
