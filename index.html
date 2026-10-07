@@ -534,8 +534,9 @@ function analyze(coin, grades, confirmed, costInput, marginOverride, expSale) {
   let range = isQuick ? null : isAI ? aiRange(coin, g, expSale) : marketRange(coin, g, spot());
   if (isQuick) { const mv = melt(coin, spot()); range = { low: mv, high: mv, mid: mv, basis: 'melt', grades: g, source: 'melt' }; }
   const limited = isAI && (!range || range.source === 'ai');
-  const tbRaw = limited ? null : targetBuy(range, m, isConfirmed);
-  const feeBase = range ? (isConfirmed ? range.mid : range.low) : 0;
+  // AI-only estimate: always price the target buy from the LOW end (conservative), labeled as an estimate.
+  const tbRaw = limited ? (range ? round2(range.low * (1 - m)) : null) : targetBuy(range, m, isConfirmed);
+  const feeBase = range ? (isConfirmed && !limited ? range.mid : range.low) : 0;
   const tb = tbRaw == null ? null : Math.max(0, round2(tbRaw - feeOf(feeBase)));
   const hideTarget = coin.gradeSensitive && !isConfirmed;
   const cost = parseFloat(costInput);
@@ -549,7 +550,7 @@ function analyze(coin, grades, confirmed, costInput, marginOverride, expSale) {
     profitLow: range && effCost ? range.low - feeOf(range.low) - effCost : null,
     profitHigh: range && effCost ? range.high - feeOf(range.high) - effCost : null,
     maxMargin: range && effCost ? round2((range.mid - feeOf(range.mid) - effCost) / range.mid) : null,
-    targetBase: range ? (isConfirmed ? range.mid : range.low) : 0,
+    targetBase: feeBase,
     cpg: g.map((k) => coin.cpg && coin.cpg[k]).filter(Boolean),
   };
 }
@@ -801,7 +802,6 @@ screens.money = () => {
   const a = analyze(c, S.grades, S.confirmed, S.cost, null, S.expSale);
   const gradeTxt = gradeLabel(c, a.grades);
   const idl = identityLine(c);
-  const roughAI = c.aiValue && aiRange(c, a.grades, '') ;
   recordHistory();
   const profitTxt = a.targetBuy && a.range ? (() => {
     const lo = a.range.low - feeOf(a.range.low) - a.targetBuy, hi = a.range.high - feeOf(a.range.high) - a.targetBuy;
@@ -823,11 +823,11 @@ screens.money = () => {
 
   ${a.limited ? `
   <div class="card">
-    <span class="eyebrow">Market</span>
-    <span class="mid">Market data limited</span>
-    <span class="small muted">No CPG or Numista price for this coin.${roughAI ? ` Claude's rough guess: ${range$(roughAI)} (not market data).` : ''} Check sales, then enter what you expect to sell it for.</span>
-    <label class="field" for="expsale">Expected sale price
-      <input id="expsale" type="number" inputmode="decimal" min="0" step="0.01" placeholder="e.g. 45" value="${esc(S.expSale)}"></label>
+    <div class="row between"><span class="eyebrow">Market</span><span class="pill warn">AI estimate</span></div>
+    <span class="big" style="color:var(--warn)">${a.range ? range$(a.range) : '—'}</span>
+    <span class="small muted">No CPG or Numista price for this coin, so this is Claude's estimate, not sales data. Check sales before paying well over melt.</span>
+    <label class="field" for="expsale">Know what it sells for? (optional)
+      <input id="expsale" type="number" inputmode="decimal" min="0" step="0.01" placeholder="Your expected sale price" value="${esc(S.expSale)}"></label>
   </div>` : `
   <div class="card">
     <span class="eyebrow">Market</span>
@@ -843,8 +843,8 @@ screens.money = () => {
       ? `<span class="mid">Confirm grade</span><button class="btn-ghost" data-a="go" data-s="grade">Pick the grade</button>`
       : a.targetBuy == null
         ? `<span class="mid">—</span><span class="small muted">Enter an expected sale price to get a target buy.</span>`
-        : `<span class="big">${money(a.targetBuy)}</span>
-           <span class="small muted">${pct(a.margin)} margin${feeOn() ? ' ' + feeNote() : ''}${a.confirmed ? '' : ', from the low end until grade is confirmed'}${profitTxt ? ` · expected profit ${profitTxt}` : ''} · <button class="btn-link small" data-a="go" data-s="settings" style="padding:0">Change</button></span>`}
+        : `<span class="big"${a.limited ? ' style="color:var(--warn)"' : ''}>${a.limited ? '~' : ''}${money(a.targetBuy)}</span>
+           <span class="small muted">${pct(a.margin)} margin${feeOn() ? ' ' + feeNote() : ''}${a.limited ? ', from the low end of the AI estimate' : a.confirmed ? '' : ', from the low end until grade is confirmed'}${profitTxt ? ` · expected profit ${profitTxt}` : ''} · <button class="btn-link small" data-a="go" data-s="settings" style="padding:0">Change</button></span>`}
   </div>
 
   <div class="grid3">
