@@ -123,6 +123,13 @@ tr.hl td{background:var(--accent-soft)}
 .slider{width:100%;accent-color:var(--accent)}
 .feas{border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:6px}
 .feas.good{background:var(--good-soft)} .feas.warn{background:var(--warn-soft)} .feas.bad{background:var(--bad-soft)} .feas.neutral{background:var(--sunk)}
+.rare{border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:4px;background:var(--warn-soft);color:var(--ink);border:1px solid var(--warn)}
+.rare.strong{background:var(--accent);color:#fff;border-color:var(--accent)}
+.rare b{font-weight:700}
+.seg{display:grid;grid-template-columns:1fr 1fr;gap:6px;background:var(--sunk);padding:4px;border-radius:12px}
+.seg button{border:0;background:transparent;min-height:44px;color:var(--muted)}
+.seg button.on{background:var(--surface);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.15)}
+.sheet{border:1.5px solid var(--accent);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:12px;background:var(--surface)}
 .confirmbox{border:1px solid var(--bad);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:10px}
 </style>
 
@@ -455,9 +462,12 @@ const S = {
   })(),
   history: store.get('cs.history', []),
 };
-S.purchase = S.lots.find((l) => l.id === store.get('cs.activeLot', '')) || S.lots[0];
+S.lots.forEach((l) => l.items.forEach((it) => { if (!it.status) it.status = 'buy'; }));
+// Nothing is "active" when the app opens; a lot becomes the session lot only once you save a coin to it.
+S.purchase = S.lots[0] || null;
+S.sessionLot = null;
 if (!S.settings.fee) S.settings.fee = { channel: 'none', pct: 0, fixed: 0 };
-const save = () => { store.set('cs.settings', S.settings); store.set('cs.lots', S.lots); store.set('cs.activeLot', S.purchase.id); store.set('cs.history', S.history); };
+const save = () => { store.set('cs.settings', S.settings); store.set('cs.lots', S.lots); store.set('cs.history', S.history); };
 
 /* ---------- selling fees (optional, set once in settings) ---------- */
 const FEE_PRESETS = { none: { pct: 0, fixed: 0 }, ebay: { pct: 13.25, fixed: 0.40 }, whatnot: { pct: 10.9, fixed: 0.30 } };
@@ -467,10 +477,37 @@ const feeOf = (sale) => feeOn() && sale > 0 ? sale * (+S.settings.fee.pct || 0) 
 const feeNote = () => feeOn() ? `after ${FEE_NAMES[S.settings.fee.channel] || 'selling'} fees` : '';
 
 /* ---------- lots ---------- */
-function newLot() {
+function newLot(name) {
   const n = S.lots.reduce((m, l) => Math.max(m, l.no || 0), 0) + 1;
-  const lot = { id: 'lot' + Date.now(), no: n, name: 'Lot ' + n, notes: '', status: 'considering', asking: '', items: [], lotOffer: '', lotMargin: null };
+  const lot = { id: 'lot' + Date.now(), no: n, name: (name || '').trim() || 'Lot ' + n, notes: '', status: 'considering', asking: '', items: [], lotOffer: '', lotMargin: null, updated: Date.now() };
   S.lots.unshift(lot); S.purchase = lot; save(); return lot;
+}
+// One-coin deals go here instead of needing a whole lot.
+function singlesLot() {
+  let l = S.lots.find((x) => x.kind === 'singles');
+  if (!l) { l = { id: 'singles', kind: 'singles', name: 'Single buys', notes: '', status: 'bought', asking: '', items: [], lotOffer: '', lotMargin: null, updated: Date.now() }; S.lots.push(l); }
+  return l;
+}
+const isBought = (lot, it) => lot.kind === 'singles' || (lot.status === 'bought' && it.status !== 'maybe');
+const realLots = () => S.lots.filter((l) => l.kind !== 'singles').sort((a, b) => (b.updated || 0) - (a.updated || 0));
+function itemFromCurrent(cost, status) {
+  const item = { coinId: S.coin.id, grades: [...S.grades], confirmed: S.confirmed, cost: Math.round((cost || 0) * 100) / 100, thumb: S.photos.thumb || null, status, at: Date.now() };
+  if (S.coin.source === 'ai') { item.coin = S.coin; item.expSale = S.expSale; }
+  return item;
+}
+const RARITY = { key: 'Key date', 'semi-key': 'Semi-key date', variety: 'Check for a variety', scarce: 'Scarce issue', lowmintage: 'Low mintage' };
+function rarityOf(c) {
+  if (!c) return null;
+  if (c.rarity && RARITY[c.rarity.level]) return c.rarity;
+  const n = parseInt(String(c.mintage || '').replace(/[^0-9]/g, ''), 10);
+  if (!c.skipGrade && n > 0 && n < 50000) return { level: 'lowmintage', note: `Only ${n.toLocaleString('en-US')} minted.`, check: '' };
+  return null;
+}
+function rarityBanner(c) {
+  const r = rarityOf(c); if (!r) return '';
+  const strong = r.level === 'key' || r.level === 'semi-key';
+  return `<div class="rare ${strong ? 'strong' : ''}" role="note"><div class="row between"><b>${strong ? '🔑 ' : '⚑ '}${RARITY[r.level]}</b><span class="small">Don't sell it short</span></div>
+    ${r.note ? `<span class="small">${esc(r.note)}</span>` : ''}${r.check ? `<span class="small"><b>Check:</b> ${esc(r.check)}</span>` : ''}</div>`;
 }
 
 /* ---------- scan history (on this phone) ---------- */
@@ -569,7 +606,7 @@ screens.home = () => {
   ${spot().live ? '' : `<div class="banner">Spot is a sample right now. Set today's price in Margins &amp; spot.</div>`}
   <button class="btn-primary btn-wide" data-a="scan">Scan a coin</button>
   <div class="grid2">
-    <button class="btn-ghost" data-a="go" data-s="lots">Lots${S.lots.length ? ` (${S.lots.length})` : ''}</button>
+    <button class="btn-ghost" data-a="go" data-s="lots">Lots &amp; buys${S.lots.filter((l) => l.items.length).length ? ` (${S.lots.filter((l) => l.items.length).length})` : ''}</button>
     <button class="btn-ghost" data-a="go" data-s="settings">Margins &amp; spot</button>
   </div>
   ${recent.length ? `<div class="card"><div class="row between"><span class="eyebrow">Recent scans</span><button class="btn-link small" data-a="go" data-s="history">All ›</button></div>
@@ -598,23 +635,31 @@ screens.history = () => `
 
 function lotSummary(lot) {
   const prev = S.purchase; S.purchase = lot;
-  const T = lot.items.length ? lotTotals() : null;
+  const T = lot.items.some((it) => it.status !== 'maybe') ? lotTotals() : null;
   S.purchase = prev;
   return T;
 }
 
-screens.lots = () => `
-  <div class="topbar"><button class="back" data-a="go" data-s="home">Home</button></div>
-  <h2>Lots</h2>
-  <p class="small muted">One lot per table or seller. Keep it as Considering while you shop; mark it Bought when you buy.</p>
-  <button class="btn-primary btn-wide" data-a="newLot">+ New lot</button>
-  <div class="list">${S.lots.map((l) => {
+screens.lots = () => {
+  const sg = S.lots.find((l) => l.kind === 'singles' && l.items.length);
+  const row = (l) => {
     const T = lotSummary(l);
-    return `<button data-a="openLot" data-id="${esc(l.id)}" style="${l.id === S.purchase.id ? 'border-color:var(--accent)' : ''}">
-      <span style="min-width:0"><b>${esc(l.name)}</b> <span class="pill ${l.status === 'bought' ? 'good' : 'neutral'}" style="margin-left:4px">${l.status === 'bought' ? 'Bought' : 'Considering'}</span><br>
-      <span class="small muted">${l.items.length} coin${l.items.length === 1 ? '' : 's'}${T ? ` · cost ${money(T.cost)} · profit ${money(T.profitMid)}` : ''}${l.notes ? ' · ' + esc(l.notes.slice(0, 40)) : ''}</span></span>
+    const maybe = l.items.filter((it) => it.status === 'maybe').length;
+    const pill = l.kind === 'singles' ? '' : `<span class="pill ${l.status === 'bought' ? 'good' : 'neutral'}" style="margin-left:4px">${l.status === 'bought' ? 'Bought' : 'Considering'}</span>`;
+    return `<button data-a="openLot" data-id="${esc(l.id)}">
+      <span style="min-width:0"><b>${esc(l.name)}</b> ${pill}<br>
+      <span class="small muted">${l.items.length - maybe} coin${l.items.length - maybe === 1 ? '' : 's'}${maybe ? ` + ${maybe} maybe` : ''}${T && T.count ? ` · cost ${money(T.cost)} · profit ${money(T.profitMid)}` : ''}${l.notes ? ' · ' + esc(l.notes.slice(0, 40)) : ''}</span></span>
       <span aria-hidden="true">›</span></button>`;
-  }).join('')}</div>`;
+  };
+  const lots = realLots();
+  return `
+  <div class="topbar"><button class="back" data-a="go" data-s="home">Home</button></div>
+  <h2>Lots &amp; buys</h2>
+  <p class="small muted">Use a lot for a table or seller with several coins. One-coin deals go to Single buys.</p>
+  ${sg ? `<div class="list">${row(sg)}</div>` : ''}
+  <div class="list">${lots.map(row).join('') || '<p class="muted">No lots yet. Save a scanned coin to a lot, or start one here.</p>'}</div>
+  <button class="btn-ghost btn-wide" data-a="newLot">+ New lot</button>`;
+};
 
 screens.capture = () => {
   const side = S.photos.obv ? 'rev' : 'obv';
@@ -732,6 +777,7 @@ function aiMatch(c) {
   <div class="topbar"><button class="back" data-a="go" data-s="fields">Edit details</button><span class="pill ${tone(conf === 'High' ? 'Likely' : conf === 'Medium' ? 'Possible' : 'Unlikely')}">${esc(conf)} confidence</span></div>
   <p class="eyebrow">Match found${S.idSeconds ? ` · ${S.idSeconds}s` : ''}</p>
   <h2>${esc(c.name)}</h2>
+  ${rarityBanner(c)}
   ${photos}
   ${c.numistaUrl ? `<p class="small muted">Numista match: ${esc(c.numistaTitle || '')}</p>` + `<a class="btn btn-ghost btn-wide" href="${esc(c.numistaUrl)}" target="_blank" rel="noopener">Compare with Numista photos · ${esc(c.numista)} ›</a>` : c.lookupPending ? '<p class="small muted">Checking Numista…</p>' : ''}
   ${c.slab ? `<div class="tile"><span class="eyebrow">${esc(c.slab.service || 'Slab')} slab detected</span><b>${esc(c.slab.grade || 'Grade not read')}</b>${c.slab.cert ? `<span class="small muted num">Cert # ${esc(c.slab.cert)}</span>` : ''}
@@ -810,12 +856,12 @@ screens.money = () => {
   return `
   <div class="topbar"><button class="back" data-a="go" data-s="${c.skipGrade ? 'match' : 'grade'}">Back</button>
     ${c.skipGrade ? '<span class="pill neutral">Bullion pricing</span>' : `<button class="btn-link" data-a="go" data-s="grade">${a.confirmed ? `${gradeTxt} · Change` : `${gradeTxt} suggested · Confirm`}</button>`}</div>
-  ${S.added ? `<div class="toast">✓ Added to ${esc(S.purchase.name)} · ${S.purchase.items.length} coin${S.purchase.items.length === 1 ? '' : 's'}</div>` : ''}
   <div class="stack" style="gap:4px">
     <h2>${esc(c.name)}</h2>
     ${idl ? `<span class="small muted">${esc(idl)}</span>` : ''}
     ${c.lookupPending ? '<span class="small muted">Checking Numista and Greysheet…</span>' : ''}
   </div>
+  ${rarityBanner(c)}
 
   ${c.gsVarieties ? `<div class="card"><span class="eyebrow">Which variety?</span>
     <div class="list">${c.gsVarieties.map((v, i) => `<button data-a="pickVariety" data-i="${i}" style="${c.gsVariety === i ? 'border-color:var(--accent);background:var(--accent-soft)' : ''}"><span>${esc(v.name)}</span><span class="small muted">${c.gsVariety === i ? 'Selected' : ''}</span></button>`).join('')}</div>
@@ -856,9 +902,7 @@ screens.money = () => {
     <button class="tile" data-a="go" data-s="sales" style="border:0;min-height:0;font-weight:400;color:var(--ink);text-align:left;justify-content:flex-start;align-items:stretch"><span class="eyebrow">Sales ›</span><b class="num">${a.isAI ? '<span class="small">eBay · PCGS</span>' : salesRange(c, a.grades)}</b></button>
   </div>
 
-  <button id="addBtn" class="btn-primary btn-wide" data-a="addToPurchase">+ Add to ${esc(S.purchase.name)}</button>
-  <div class="row between" style="margin-top:-8px"><span class="small muted">${S.purchase.items.length} coin${S.purchase.items.length === 1 ? '' : 's'} in this lot</span><button class="btn-link small" data-a="go" data-s="lots">Change lot</button></div>
-  <button class="btn-ghost btn-wide" data-a="listing">Create listing</button>
+  ${actionArea(a)}
 
   <details id="more" ${S.moreOpen ? 'open' : ''}><summary>More analysis ›</summary>
     <div class="stack" style="margin-top:8px">
@@ -869,11 +913,55 @@ screens.money = () => {
   </details>
 
   <div class="row between">
-    <button class="btn-link" data-a="scan">Scan next coin ›</button>
     <button class="btn-link" data-a="go" data-s="details">Coin details ›</button>
+    <button class="btn-link" data-a="go" data-s="sales">Sales ›</button>
   </div>
   <p class="small muted" style="text-align:center">${S.feedback ? 'Thanks, noted.' : `Correct ID? <button class="btn-link small" data-a="fb" data-v="yes">Yes</button> · <button class="btn-link small" data-a="fb" data-v="no">No</button>`}</p>`;
 };
+
+// What the dealer can do with this coin. Nothing is pre-assigned to a lot.
+function actionArea(a) {
+  const defPrice = a.cost ?? a.targetBuy ?? null;
+  const priceField = (label) => `<label class="field" for="paid">${label}
+      <input id="paid" type="number" inputmode="decimal" min="0" step="0.01" placeholder="${defPrice != null ? 'Target buy ' + money(defPrice) : 'Price'}" value="${esc(S.paid ?? (defPrice != null ? defPrice : ''))}"></label>`;
+  if (S.added) {
+    const L = S.lots.find((l) => l.id === S.added.lot);
+    const bought = S.added.kind === 'bought';
+    return `<div class="toast">✓ ${bought ? `Bought for ${money(S.added.cost)} · in Single buys` : `Saved to ${esc(L ? L.name : 'lot')} as ${S.added.status === 'maybe' ? 'Maybe' : 'Buy'}`}</div>
+      ${bought ? '<button class="btn-primary btn-wide" data-a="listing">Create listing</button>' : ''}
+      <div class="grid2"><button class="${bought ? 'btn-ghost' : 'btn-primary'}" data-a="scan">Scan next coin</button><button class="btn-ghost" data-a="openLot" data-id="${esc(S.added.lot)}">${bought ? 'Single buys ›' : 'View lot ›'}</button></div>`;
+  }
+  if (S.sheet === 'bought') return `<div class="sheet">
+      <b>Bought it</b>
+      ${priceField('What did you pay?')}
+      <button class="btn-primary btn-wide" data-a="saveBought">Save purchase</button>
+      <div class="row between"><button class="btn-link small" data-a="sheet" data-v="">Cancel</button><button class="btn-link small" data-a="sheet" data-v="lot">Part of a bigger deal? Use a lot ›</button></div>
+    </div>`;
+  if (S.sheet === 'lot') {
+    const lots = realLots().slice(0, 5);
+    const st = S.lotStatus || 'buy';
+    return `<div class="sheet">
+      <b>Save to a lot</b>
+      <div class="seg" role="group" aria-label="Buy or maybe">
+        <button class="${st === 'buy' ? 'on' : ''}" data-a="lotPick" data-v="buy">Buy</button>
+        <button class="${st === 'maybe' ? 'on' : ''}" data-a="lotPick" data-v="maybe">Maybe</button>
+      </div>
+      <span class="small muted">${st === 'buy' ? 'Counts toward the lot total.' : 'Saved in the lot but not counted. Switch it to Buy anytime.'}</span>
+      ${priceField('Your price for this coin')}
+      ${lots.length ? `<span class="eyebrow">Existing lots</span><div class="list">${lots.map((l) => `<button data-a="saveToLot" data-id="${esc(l.id)}"><span style="min-width:0"><b>${esc(l.name)}</b><br><span class="small muted">${l.items.length} coin${l.items.length === 1 ? '' : 's'}${l.notes ? ' · ' + esc(l.notes.slice(0, 30)) : ''}</span></span><span aria-hidden="true">+</span></button>`).join('')}</div>` : ''}
+      <span class="eyebrow">${lots.length ? 'Or start a new lot' : 'New lot'}</span>
+      <input id="newlot" type="text" placeholder="Table # or seller, e.g. Table 412 Mike" value="${esc(S.newLotName || '')}" aria-label="New lot name">
+      <button class="btn-primary btn-wide" data-a="saveToLot" data-id="new">Create lot &amp; save</button>
+      <button class="btn-link small" data-a="sheet" data-v="">Cancel</button>
+    </div>`;
+  }
+  return `<div class="grid2">
+      <button class="btn-primary" data-a="sheet" data-v="bought">Bought it</button>
+      <button class="btn-ghost" data-a="sheet" data-v="lot">Save to a lot</button>
+    </div>
+    <button class="btn-ghost btn-wide" data-a="scan">Pass · scan next coin</button>
+    <span class="small muted" style="text-align:center;margin-top:-6px">Every scan is kept in Recent scans either way.</span>`;
+}
 
 // Greysheet wholesale is internal-use only: shown only when the owner code is set on this phone.
 function greyLine(c, a) {
@@ -947,8 +1035,57 @@ screens.details = () => {
   <p class="small muted">${c.source === 'ai' ? (c.numistaUrl ? `Specs from Numista: <a href="${esc(c.numistaUrl)}" target="_blank" rel="noopener" style="color:var(--accent)">${esc(c.numista)}</a>.${c.gsName ? ` Pricing matched to Greysheet: ${esc(c.gsName)}.` : ''}` : 'Specs read by Claude from memory; no Numista match found. Verify before relying on them.') : 'Specs: Numista (sample values in this prototype).'}</p></div>`;
 };
 
+function itemRow(P, it, i, T) {
+  const raw = P.items[i];
+  const coin = it.coin;
+  const bought = isBought(P, raw);
+  const r = rarityOf(coin);
+  const maybe = raw.status === 'maybe';
+  const profit = !maybe && it.mid ? it.mid - feeOf(it.mid) - it.allocCost : null;
+  return `
+      <div class="coinrow">
+        ${raw.thumb ? `<img src="${raw.thumb}" alt="">` : '<span class="ph"></span>'}
+        <div style="min-width:0">
+          <div style="font-weight:600">${esc(coin.name)}${r ? ` <span class="pill ${r.level === 'key' || r.level === 'semi-key' ? 'good' : 'warn'}" style="font-size:.7rem">${RARITY[r.level]}</span>` : ''}</div>
+          <div class="small muted">${esc(it.gradeTxt)} · sells ~${money(it.mid)}</div>
+          ${profit != null ? `<div class="small">Profit ${money(profit)} · margin ${pct(profit / it.mid)}</div>` : ''}
+          <div class="row" style="gap:12px;flex-wrap:wrap">
+            ${P.kind === 'singles' ? '' : `<button class="btn-link small" data-a="itemStatus" data-i="${i}" data-v="${maybe ? 'buy' : 'maybe'}" style="padding:0">${maybe ? 'Move to Buy' : 'Move to Maybe'}</button>`}
+            ${bought && !raw.quick ? `<button class="btn-link small" data-a="itemListing" data-i="${i}" style="padding:0">Create listing</button>` : ''}
+            <button class="btn-link small" data-a="removeItem" data-i="${i}" style="padding:0;color:var(--muted)">Remove</button>
+          </div>
+          <input type="text" data-inote="${i}" value="${esc(raw.note || '')}" placeholder="Note" style="margin-top:6px;min-height:36px;padding:6px 10px;font-size:.85rem">
+        </div>
+        <input class="costin num" type="number" inputmode="decimal" data-cost="${i}" value="${raw.cost}" aria-label="${P.kind === 'singles' ? 'Paid' : 'Cost'} for ${esc(coin.name)}" ${P.lotOffer && !maybe ? 'disabled title="Set by lot offer"' : ''}>
+      </div>`;
+}
+
+// Display data for every item (Buy items carry their allocated cost from the totals).
+function lotRows(P, T) {
+  const alloc = Object.fromEntries(T.allocated.map((x) => [x.idx, x]));
+  return P.items.map((raw, i) => {
+    if (alloc[i]) return alloc[i];
+    const coin = raw.quick ? quickCoin(raw.quick) : (raw.coin || coinById(raw.coinId));
+    const a = analyze(coin, raw.grades || ['ANY'], raw.confirmed !== false, '', null, raw.expSale);
+    return { coin, mid: a.range ? a.range.mid : 0, allocCost: raw.cost, gradeTxt: coin.source === 'quick' ? 'Melt-priced' : gradeLabel(coin, a.grades) };
+  });
+}
+
 screens.purchase = () => {
   const P = S.purchase;
+  if (!P) return screens.lots();
+  if (P.kind === 'singles') {
+    const T = lotTotals(); const rows = lotRows(P, T);
+    return `
+    <div class="topbar"><button class="back" data-a="go" data-s="home">Home</button><button class="btn-link" data-a="go" data-s="lots">All lots ›</button></div>
+    <h2>Single buys</h2>
+    <p class="small muted">One-coin deals. Tap Create listing when you're ready to sell.</p>
+    ${P.items.length ? `<div class="card"><div class="grid2">
+      <div class="tile"><span class="eyebrow">Total paid</span><b class="num">${money(T.cost)}</b></div>
+      <div class="tile"><span class="eyebrow">Expected profit</span><b class="num">${money(T.profitMid)}</b>${feeOn() ? `<span class="small muted">${feeNote()}</span>` : ''}</div></div></div>
+    <div class="card"><span class="eyebrow">Coins · tap a price to edit</span>${P.items.map((_, i) => itemRow(P, rows[i], i, T)).join('')}</div>` : '<div class="card"><p class="muted">No single buys yet. Scan a coin and tap Bought it.</p></div>'}
+    <button class="btn-primary btn-wide" data-a="scan">Scan a coin</button>`;
+  }
   const head = `
     <div class="topbar"><button class="back" data-a="go" data-s="home">Home</button><button class="btn-link" data-a="go" data-s="lots">All lots ›</button></div>
     <input id="lotname" type="text" value="${esc(P.name)}" aria-label="Lot name" style="font-family:var(--f-display);font-size:1.45rem;font-weight:700;border:0;padding:4px 0;min-height:0;background:transparent">
@@ -957,61 +1094,55 @@ screens.purchase = () => {
       <button class="pill ${P.status === 'bought' ? 'good' : 'neutral'}" data-a="lotStatus" data-v="bought" style="border:0;min-height:36px;padding:6px 14px">Bought</button>
     </div>
     <label class="field" for="lotnotes">Table / notes<input id="lotnotes" type="text" value="${esc(P.notes || '')}" placeholder="e.g. Table 412, Mike, open to bulk deal"></label>`;
+  const del = S.confirmClear
+    ? `<div class="confirmbox"><b>Delete ${esc(P.name)}?</b><span class="small">This removes the lot and its ${P.items.length} coins. Scan history keeps the scans.</span>
+       <div class="grid2"><button class="btn-ghost" data-a="cancelClear">Keep</button><button class="btn-primary" data-a="deleteLot" style="background:var(--bad);color:#fff">Delete</button></div></div>`
+    : `<button class="btn-link btn-wide" data-a="askClear" style="color:var(--bad)">Delete this lot</button>`;
   if (!P.items.length) return head + `
-    <div class="card"><p>No coins yet. Scan a coin and tap <b>Add to ${esc(P.name)}</b>; the totals build as you go.</p></div>
+    <div class="card"><p>No coins yet. Scan a coin, then tap <b>Save to a lot</b> and pick ${esc(P.name)}.</p></div>
     <button class="btn-primary btn-wide" data-a="scan">Scan a coin</button>
-    <button class="btn-ghost btn-wide" data-a="go" data-s="quick">+ Quick add bullion or junk silver</button>`;
+    <button class="btn-ghost btn-wide" data-a="go" data-s="quick">+ Quick add bullion or junk silver</button>` + del;
   const T = lotTotals();
+  const rows = lotRows(P, T);
+  const buyIdx = P.items.map((it, i) => i).filter((i) => P.items[i].status !== 'maybe');
+  const maybeIdx = P.items.map((it, i) => i).filter((i) => P.items[i].status === 'maybe');
   const lm = T.margin;
   return head + `
-
+  ${P.status === 'bought' ? '<div class="toast">Bought. Tap Create listing on any coin when you\'re ready to sell.</div>' : ''}
+  ${buyIdx.length ? `
   <div class="card">
     <div class="grid2">
       <div><span class="eyebrow">Estimated market</span><div class="mid" style="font-size:1.35rem">${money(T.low)}–${money(T.high)}</div></div>
       <div><span class="eyebrow">Total melt</span><div class="mid" style="font-size:1.35rem">${money(T.meltTotal)}</div></div>
     </div>
+    ${maybeIdx.length ? `<span class="small muted">${buyIdx.length} Buy coin${buyIdx.length === 1 ? '' : 's'} counted · ${maybeIdx.length} Maybe not counted</span>` : ''}
   </div>
-
+  ${P.status === 'bought' ? '' : `
   <div class="card">
     <div class="row between"><span class="eyebrow">Target margin for this lot</span><b class="num" id="lmv">${pct(lm)}</b></div>
     <input class="slider" id="lm" type="range" min="0" max="0.6" step="0.01" value="${lm}" aria-label="Target margin for this lot">
     <div class="row between"><span>Max offer at ${pct(lm)}</span><b class="num">${money(T.maxOffer)}</b></div>
-  </div>
-
+  </div>`}
   <div class="card" id="lotcalc">${lotCalcInner(T)}</div>
-
-  ${T.liquidity != null ? liquidityBlock({ score: T.liquidity, label: T.liquidity >= 70 ? 'Fast' : T.liquidity >= 45 ? 'Moderate' : 'Slow' }, 'Lot liquidity') : ''}
-
   <div class="card">
-    <span class="eyebrow">Coins · tap a cost to edit</span>
-    ${T.allocated.map((it, i) => `
-      <div class="coinrow">
-        ${it.thumb ? `<img src="${it.thumb}" alt="">` : '<span class="ph"></span>'}
-        <div style="min-width:0">
-          <div style="font-weight:600">${esc(it.coin.name)}</div>
-          <div class="small muted">${esc(it.gradeTxt)} · sells ~${money(it.mid)} ${it.liqLabel ? `· <span class="dot" style="background:var(--${tone(it.liqLabel) === 'good' ? 'good' : tone(it.liqLabel) === 'warn' ? 'warn' : 'bad'})"></span> ${it.liqLabel}` : ''}</div>
-          <div class="small">${it.mid ? `Profit ${money(it.mid - feeOf(it.mid) - it.allocCost)} · margin ${pct((it.mid - feeOf(it.mid) - it.allocCost) / it.mid)}` : 'No value yet'} <button class="btn-link small" data-a="removeItem" data-i="${i}" style="padding:0 0 0 6px">Remove</button></div>
-          <input type="text" data-inote="${i}" value="${esc(P.items[i].note || '')}" placeholder="Note" style="margin-top:6px;min-height:36px;padding:6px 10px;font-size:.85rem">
-        </div>
-        <input class="costin num" type="number" inputmode="decimal" data-cost="${i}" value="${it.cost}" aria-label="Cost for ${esc(it.coin.name)}" ${P.lotOffer ? 'disabled title="Set by lot offer"' : ''}>
-      </div>`).join('')}
+    <span class="eyebrow">Buy · ${buyIdx.length} · tap a cost to edit</span>
+    ${buyIdx.map((i) => itemRow(P, rows[i], i, T)).join('')}
     ${P.lotOffer ? '<p class="small muted">Per-coin costs are split from your lot offer by expected sale value.</p>' : ''}
-  </div>
-
+  </div>` : '<div class="card"><p class="muted">No coins marked Buy yet. Move a Maybe to Buy to see totals.</p></div>'}
+  ${maybeIdx.length ? `<div class="card">
+    <span class="eyebrow">Maybe · ${maybeIdx.length} · not in the total</span>
+    ${maybeIdx.map((i) => itemRow(P, rows[i], i, T)).join('')}
+  </div>` : ''}
   <div class="grid2"><button class="btn-primary" data-a="scan">Scan a coin</button><button class="btn-ghost" data-a="go" data-s="quick">+ Quick add</button></div>
-  <button class="btn-ghost btn-wide" data-a="newLot">+ New lot</button>
-  ${S.confirmClear
-    ? `<div class="confirmbox"><b>Delete ${esc(P.name)}?</b><span class="small">This removes the lot and its ${T.count} coins. Scan history keeps the scans.</span>
-       <div class="grid2"><button class="btn-ghost" data-a="cancelClear">Keep</button><button class="btn-primary" data-a="deleteLot" style="background:var(--bad);color:#fff">Delete</button></div></div>`
-    : `<button class="btn-link btn-wide" data-a="askClear" style="color:var(--bad)">Delete this lot</button>`}`;
+  ${del}`;
 };
 
 function lotTotals() {
   const P = S.purchase;
-  const rows = P.items.map((it) => {
+  const rows = P.items.map((it, idx) => ({ it, idx })).filter((x) => x.it.status !== 'maybe').map(({ it, idx }) => {
     const coin = it.quick ? quickCoin(it.quick) : (it.coin || coinById(it.coinId));
     const a = analyze(coin, it.grades || ['ANY'], it.confirmed !== false, '', null, it.expSale);
-    return { ...it, coin, a };
+    return { ...it, idx, coin, a };
   });
   const defMargin = (() => {
     const tot = rows.reduce((s, r) => s + (r.a.range ? r.a.range.mid : 0), 0);
@@ -1022,7 +1153,7 @@ function lotTotals() {
   const items = rows.map((r) => ({
     cost: r.cost, low: r.a.range ? r.a.range.low : 0, high: r.a.range ? r.a.range.high : 0,
     mid: r.a.range ? r.a.range.mid : 0, melt: r.a.melt, liquidity: r.a.liq ? r.a.liq.score : null, targetBase: r.a.targetBase,
-    coin: r.coin, thumb: r.thumb, gradeTxt: r.coin.source === 'quick' ? 'Melt-priced' : gradeLabel(r.coin, r.a.grades) + (r.coin.skipGrade || r.confirmed ? '' : ' (suggested)'),
+    idx: r.idx, coin: r.coin, thumb: r.thumb, gradeTxt: r.coin.source === 'quick' ? 'Melt-priced' : gradeLabel(r.coin, r.a.grades) + (r.coin.skipGrade || r.confirmed ? '' : ' (suggested)'),
     liqLabel: r.a.liq ? r.a.liq.label : '',
   }));
   const T = purchaseTotals(items, margin, parseFloat(P.lotOffer) || 0);
@@ -1056,10 +1187,10 @@ function verdict(T, P) {
 function lotCalcInner(T) {
   const P = S.purchase;
   return `
-    <label class="field" for="asking">Seller asking for the lot
-      <input id="asking" type="number" inputmode="decimal" min="0" placeholder="What are they asking?" value="${esc(P.asking || '')}"></label>
-    ${verdict(T, P)}
-    <label class="field" for="lot">Your offer for the whole lot
+    ${P.status === 'bought' ? '' : `<label class="field" for="asking">Seller asking for the lot`}
+      ${P.status === 'bought' ? '' : `<input id="asking" type="number" inputmode="decimal" min="0" placeholder="What are they asking?" value="${esc(P.asking || '')}"></label>
+    ${verdict(T, P)}`}
+    <label class="field" for="lot">${P.status === 'bought' ? 'What you paid for the lot' : 'Your offer for the whole lot'}
       <input id="lot" type="number" inputmode="decimal" min="0" placeholder="Sum of coin costs: ${money(T.costEntered)}" value="${esc(P.lotOffer)}"></label>
     <div class="grid2">
       <div class="tile"><span class="eyebrow">Total cost</span><b class="num">${money(T.cost)}</b></div>
@@ -1085,18 +1216,18 @@ screens.listing = () => {
   const L = S.listing || {};
   const c = S.coin;
   if (L.loading) return `
-    <div class="topbar"><button class="back" data-a="go" data-s="money">Back</button></div>
+    <div class="topbar"><button class="back" data-a="go" data-s="${S.listingBack || 'money'}">Back</button></div>
     <div class="spinner" role="status" aria-label="Writing listing"></div>
     <h2 style="text-align:center">Writing the listing…</h2>
     <p class="muted small" style="text-align:center">Uses the details you confirmed. Usually 5–10 seconds.</p>`;
   if (L.error) return `
-    <div class="topbar"><button class="back" data-a="go" data-s="money">Back</button></div>
+    <div class="topbar"><button class="back" data-a="go" data-s="${S.listingBack || 'money'}">Back</button></div>
     <h2>Couldn't write the listing</h2><p class="muted">${esc(L.error)}</p>
     <button class="btn-primary btn-wide" data-a="listing">Try again</button>`;
   const footer = store.get('cs.footer', '');
   const fullDesc = (L.description || '') + (footer ? '\n\n' + footer : '');
   return `
-  <div class="topbar"><button class="back" data-a="go" data-s="money">Back</button><button class="btn-link" data-a="listingRedo">Rewrite</button></div>
+  <div class="topbar"><button class="back" data-a="go" data-s="${S.listingBack || 'money'}">Back</button><button class="btn-link" data-a="listingRedo">Rewrite</button></div>
   <p class="eyebrow">Listing draft · review before posting</p>
   <h2>${esc(c.name)}</h2>
   <div class="card">
@@ -1133,6 +1264,7 @@ async function makeListing() {
     variety: c.gsVariety != null && c.gsVarieties ? c.gsVarieties[c.gsVariety].name : null,
     km: c.km, composition: c.composition, fineness: c.fineness, weight: c.weight, diameter: c.diameter,
     asw: c.asw, agw: c.agw, slab: c.slab || null, bullion: !!c.skipGrade,
+    rarity: c.rarity && (c.rarity.level === 'key' || c.rarity.level === 'semi-key') ? `${RARITY[c.rarity.level]}. ${c.rarity.note}` : null,
     grade: c.slab ? null : (c.skipGrade ? null : (a.confirmed ? gradeLabel(c, a.grades) + ' (raw, seller\'s opinion)' : null)),
   };
   try {
@@ -1195,7 +1327,7 @@ screens.quick = () => {
     <label class="field" for="qp">Buy at % of melt<input id="qp" type="number" inputmode="decimal" min="0" max="200" value="${esc(Q.pct)}"></label>
     <div class="grid2" id="qcalc">${quickCalc(m, offer)}</div>
   </div>
-  <button class="btn-primary btn-wide" data-a="quickAdd" ${m > 0 ? '' : 'disabled'} id="qadd">Add to purchase</button>`;
+  <button class="btn-primary btn-wide" data-a="quickAdd" ${m > 0 ? '' : 'disabled'} id="qadd">Add to ${esc(S.purchase ? S.purchase.name : 'lot')}</button>`;
 };
 function quickCalc(m, offer) {
   return `<div class="tile"><span class="eyebrow">Melt</span><b class="num">${money(m)}</b></div>
@@ -1242,12 +1374,14 @@ let prevScreen = 'home';
 function render() {
   document.getElementById('app').innerHTML = screens[S.screen]();
   const bar = document.getElementById('pbar');
-  const n = S.purchase.items.length;
-  const showBar = n && !['purchase', 'capture', 'identifying', 'settings', 'listing', 'quick', 'lots', 'history'].includes(S.screen);
+  // Only the lot you're working this session shows here, never a leftover lot from before.
+  const SL = S.sessionLot && S.lots.find((l) => l.id === S.sessionLot);
+  const showBar = SL && SL.items.length && !['purchase', 'capture', 'identifying', 'settings', 'listing', 'quick', 'lots', 'history'].includes(S.screen);
   bar.hidden = !showBar;
   if (showBar) {
-    const T = lotTotals();
-    bar.innerHTML = `<button data-a="go" data-s="purchase"><span>${esc(S.purchase.name)} · ${n} coin${n === 1 ? '' : 's'}</span><span class="num">${money(T.cost)} · ${T.profitMid < 0 ? money(T.profitMid) : "+" + money(T.profitMid)} ›</span></button>`;
+    const T = lotSummary(SL) || { cost: 0, profitMid: 0 };
+    const nb = SL.items.filter((it) => it.status !== 'maybe').length, nm = SL.items.length - nb;
+    bar.innerHTML = `<button data-a="openLot" data-id="${esc(SL.id)}"><span>${esc(SL.name)} · ${nb} buy${nm ? ` + ${nm} maybe` : ''}</span><span class="num">${money(T.cost)} · ${T.profitMid < 0 ? money(T.profitMid) : '+' + money(T.profitMid)} ›</span></button>`;
   }
   window.scrollTo(0, 0);
 }
@@ -1477,6 +1611,7 @@ function coinFromAI(r) {
     slab: r.slab && (r.slab.service || r.slab.grade) ? r.slab : null,
     gradeNote: r.grade_note || '', confidence: ['High', 'Medium', 'Low'].includes(r.confidence) ? r.confidence : 'Medium',
     photoFeedback: r.photo_feedback || '',
+    rarity: r.rarity && RARITY[r.rarity.level] ? { level: r.rarity.level, note: String(r.rarity.note || ''), check: String(r.rarity.check || '') } : null,
   };
 }
 
@@ -1575,7 +1710,7 @@ document.addEventListener('click', (e) => {
   const a = t.dataset.a;
   if (a === 'go') return go(t.dataset.s);
   if (a === 'back') return go(prevScreen);
-  if (a === 'scan') { Object.assign(S, { wrongScanId: null, photos: {}, files: {}, coin: null, fields: null, ai: null, cost: '', expSale: '', added: false, candidates: false, feedback: null, confirmClear: false, manual: false, idUnavailable: false }); return go('capture'); }
+  if (a === 'scan') { Object.assign(S, { sheet: '', paid: null, newLotName: '', lotStatus: 'buy', wrongScanId: null, photos: {}, files: {}, coin: null, fields: null, ai: null, cost: '', expSale: '', added: false, candidates: false, feedback: null, confirmClear: false, manual: false, idUnavailable: false }); return go('capture'); }
   if (a === 'demo') { Object.assign(S, { photos: {}, files: {}, coin: null, cost: '', expSale: '', added: false, candidates: false, feedback: null, idUnavailable: false }); return go('pick'); }
   if (a === 'saveCode') {
     const v = document.getElementById('code').value.trim();
@@ -1635,14 +1770,33 @@ document.addEventListener('click', (e) => {
     if (t.dataset.v === 'no') { S.wrongScanId = S.scanId; return go('fields'); }
     return render();
   }
-  if (a === 'addToPurchase') {
+  if (a === 'sheet') { S.sheet = t.dataset.v; if (S.sheet === 'lot' && !S.lotStatus) S.lotStatus = 'buy'; return render(); }
+  if (a === 'lotPick') { S.lotStatus = t.dataset.v; const p = document.getElementById('paid'); if (p) S.paid = p.value; const nl = document.getElementById('newlot'); if (nl) S.newLotName = nl.value; return render(); }
+  if (a === 'saveBought' || a === 'saveToLot') {
     const an = analyze(S.coin, S.grades, S.confirmed, S.cost, null, S.expSale);
-    // Never block adding: fall back to melt (or 0) as a placeholder cost the dealer can edit in the lot.
-    const cost = an.cost ?? an.targetBuy ?? (an.melt > 0 ? an.melt : 0);
-    const item = { coinId: S.coin.id, grades: [...S.grades], confirmed: S.confirmed, cost: Math.round(cost * 100) / 100, thumb: S.photos.thumb || null };
-    if (S.coin.source === 'ai') { item.coin = S.coin; item.expSale = S.expSale; }
-    S.purchase.items.push(item);
-    S.added = true; save(); return render();
+    const pv = parseFloat((document.getElementById('paid') || {}).value);
+    const cost = pv >= 0 ? pv : (an.cost ?? an.targetBuy ?? (an.melt > 0 ? an.melt : 0));
+    let lot;
+    if (a === 'saveBought') { lot = singlesLot(); lot.items.push(itemFromCurrent(cost, 'buy')); S.added = { kind: 'bought', lot: lot.id, cost }; }
+    else {
+      if (t.dataset.id === 'new') {
+        const nm = (document.getElementById('newlot') || {}).value || '';
+        if (!nm.trim()) { const el = document.getElementById('newlot'); if (el) { el.focus(); el.placeholder = 'Name it first, e.g. Table 412'; el.style.borderColor = 'var(--bad)'; } return; }
+        lot = newLot(nm);
+      } else lot = S.lots.find((l) => l.id === t.dataset.id);
+      if (!lot) return;
+      const st = S.lotStatus || 'buy';
+      lot.items.push(itemFromCurrent(cost, st));
+      S.sessionLot = lot.id; S.added = { kind: 'lot', lot: lot.id, status: st };
+    }
+    lot.updated = Date.now(); S.purchase = lot; S.sheet = ''; S.paid = null; S.newLotName = '';
+    save(); return render();
+  }
+  if (a === 'itemStatus') { S.purchase.items[+t.dataset.i].status = t.dataset.v; S.purchase.updated = Date.now(); save(); return render(); }
+  if (a === 'itemListing') {
+    const it = S.purchase.items[+t.dataset.i]; if (!it || it.quick) return;
+    Object.assign(S, { coin: it.coin || coinById(it.coinId), grades: it.grades || [], confirmed: it.confirmed !== false, expSale: it.expSale || '', cost: String(it.cost || ''), photos: { thumb: it.thumb }, listingBack: 'purchase' });
+    return makeListing();
   }
   if (a === 'pickVariety') {
     const v = S.coin.gsVarieties[+t.dataset.i];
@@ -1650,7 +1804,7 @@ document.addEventListener('click', (e) => {
     S.coin.cpg = v.cpg; S.coin.cpgRange = v.cpgRange; S.coin.grey = v.grey;
     return render();
   }
-  if (a === 'listing') return makeListing();
+  if (a === 'listing') { S.listingBack = 'money'; return makeListing(); }
   if (a === 'listingRedo') return makeListing();
   if (a === 'copy') {
     const val = (id) => (document.getElementById(id) || {}).value || '';
@@ -1666,21 +1820,23 @@ document.addEventListener('click', (e) => {
   if (a === 'quickAdd') {
     const Q = S.quick; const m = melt(quickCoin(Q), spot());
     if (!(m > 0)) return;
-    S.purchase.items.push({ quick: { id: Q.id, qty: +Q.qty }, grades: ['ANY'], confirmed: true, cost: Math.round(m * (+Q.pct || 0)) / 100 });
+    S.purchase.items.push({ quick: { id: Q.id, qty: +Q.qty }, grades: ['ANY'], confirmed: true, cost: Math.round(m * (+Q.pct || 0)) / 100, status: 'buy' });
+    S.purchase.updated = Date.now(); if (S.purchase.kind !== 'singles') S.sessionLot = S.purchase.id;
     save(); S.quick = { ...Q, qty: '' }; return go('purchase');
   }
   if (a === 'removeItem') { S.purchase.items.splice(+t.dataset.i, 1); save(); return render(); }
-  if (a === 'newLot') { newLot(); S.confirmClear = false; return go('purchase'); }
-  if (a === 'openLot') { S.purchase = S.lots.find((l) => l.id === t.dataset.id) || S.purchase; save(); S.confirmClear = false; return go(S.coin && prevScreen === 'money' ? 'money' : 'purchase'); }
+  if (a === 'newLot') { newLot(); S.sessionLot = S.purchase.id; S.confirmClear = false; return go('purchase'); }
+  if (a === 'openLot') { const L = S.lots.find((l) => l.id === t.dataset.id); if (!L) return; S.purchase = L; if (L.kind !== 'singles') S.sessionLot = L.id; S.confirmClear = false; return go('purchase'); }
   if (a === 'lotStatus') { S.purchase.status = t.dataset.v; save(); return render(); }
   if (a === 'deleteLot') {
     S.lots = S.lots.filter((l) => l.id !== S.purchase.id);
-    if (!S.lots.length) newLot(); else S.purchase = S.lots[0];
+    if (S.sessionLot === S.purchase.id) S.sessionLot = null;
+    S.purchase = S.lots[0] || null;
     S.confirmClear = false; save(); return go('lots');
   }
   if (a === 'openHist') {
     const h = S.history.find((x) => x.id === t.dataset.id); if (!h) return;
-    Object.assign(S, { coin: { ...h.coin }, grades: h.grades || [], confirmed: h.confirmed, expSale: h.expSale || '', cost: '', added: false, feedback: 'n/a', photos: { thumb: h.thumb }, files: {}, scanId: null, histAt: h.at });
+    Object.assign(S, { coin: { ...h.coin }, grades: h.grades || [], confirmed: h.confirmed, expSale: h.expSale || '', cost: '', added: false, sheet: '', paid: null, feedback: 'n/a', photos: { thumb: h.thumb }, files: {}, scanId: null, histAt: h.at });
     return go('money');
   }
   if (a === 'clearHistory') { S.history = []; S.confirmClear = false; save(); return render(); }
@@ -1733,6 +1889,8 @@ document.addEventListener('input', (e) => {
     S.expSale = el.value;
     return;
   }
+  if (el.id === 'paid') { S.paid = el.value; return; }
+  if (el.id === 'newlot') { S.newLotName = el.value; return; }
   if (el.id === 'lotname') { S.purchase.name = el.value || 'Lot'; save(); return; }
   if (el.id === 'lotnotes') { S.purchase.notes = el.value; save(); return; }
   if (el.dataset && el.dataset.inote != null) { S.purchase.items[+el.dataset.inote].note = el.value; save(); return; }

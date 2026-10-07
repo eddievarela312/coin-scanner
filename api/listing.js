@@ -23,6 +23,7 @@ export default async function handler(req, res) {
     Weight: c.weight, Diameter: c.diameter, 'Silver content (oz)': c.asw, 'Gold content (oz)': c.agw,
     Grade: c.grade, 'Grading service': c.slab && c.slab.service, 'Slab grade': c.slab && c.slab.grade,
     'Cert number': c.slab && c.slab.cert, 'Bullion-type coin': c.bullion ? 'yes' : undefined,
+    'Key date': c.rarity,
   }).filter(([, v]) => v != null && v !== '').map(([k, v]) => `${k}: ${String(v).slice(0, 200)}`).join('\n');
 
   const prompt = `Write an eBay listing for this coin for a professional coin dealer. Use ONLY the facts below; never invent varieties, pedigrees, mintages or grades.

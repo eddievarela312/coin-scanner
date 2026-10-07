@@ -38,7 +38,8 @@ Reply with only this JSON object:
  "confidence": "High",
  "candidates": [{"coin_name": "", "why": ""}],
  "rough_value_usd": {"VF": [60, 80]},
- "photo_feedback": ""
+ "photo_feedback": "",
+ "rarity": {"level": "", "note": "", "check": ""}
 }
 Rules:
 - identified: false if you cannot tell what the coin is.
@@ -52,6 +53,7 @@ Rules:
 - rough_value_usd: approximate typical US retail ranges for the grades in question, from general knowledge, only where you have a reasonable sense; otherwise {}. These are shown to the dealer labeled as rough estimates.
 - weights in grams, ASW/AGW in troy ounces.
 - photo_feedback: one short tip if the photos limited you (glare, blur, too small), else "".
+- rarity: flag coins a dealer must not undervalue. level is "key" (a famous key date/mint of its series, e.g. 1916-D Mercury dime, 1909-S VDB cent, 1893-S Morgan, 1932-D/S Washington quarter), "semi-key" (scarcer date/mint that sells well above common dates, e.g. 1921-D Mercury dime, 1914-D cent), "variety" (a known valuable variety or error this date could be, e.g. 1955 doubled die cent, 1942/1 dime, 1937-D 3-legged buffalo; say what to look for), "scarce" (low-mintage or rarely seen world/colonial issue), or "" for ordinary dates. Only flag when you are confident this exact date/mint/assayer combination qualifies; never flag common dates. note: one short sentence on why (include mintage if you know it). check: one short sentence on what to verify, e.g. counterfeit or altered-date risk, or the diagnostic to look for. Use "" for both when level is "".
 - Mint marks and assayer initials must agree: on Spanish colonial and Latin American coins, check that the assayer initials belong to that mint and year (e.g. 1769 Mexico City is Mo-MF; JM is a Lima assayer). If they conflict, trust the clearer of the two, list mint_mark as uncertain, and lower confidence.
 - For worn dates, give the most likely year but list year in uncertain_fields and put other plausible dates in candidates.`;
 
