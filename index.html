@@ -130,6 +130,10 @@ tr.hl td{background:var(--accent-soft)}
 .seg button{border:0;background:transparent;min-height:44px;color:var(--muted)}
 .seg button.on{background:var(--surface);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.15)}
 .sheet{border:1.5px solid var(--accent);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:12px;background:var(--surface)}
+.comps{display:flex;justify-content:space-between;align-items:center;border:1.5px solid var(--accent);color:var(--accent);background:var(--surface);font-weight:700;text-decoration:none}
+.howto{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;text-align:center}
+.howto div{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 4px;display:flex;flex-direction:column;gap:2px}
+.howto b{font-family:var(--f-display);font-size:1.1rem;color:var(--accent)}
 .confirmbox{border:1px solid var(--bad);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:10px}
 </style>
 
@@ -609,6 +613,12 @@ screens.home = () => {
     <button class="btn-ghost" data-a="go" data-s="lots">Lots &amp; buys${S.lots.filter((l) => l.items.length).length ? ` (${S.lots.filter((l) => l.items.length).length})` : ''}</button>
     <button class="btn-ghost" data-a="go" data-s="settings">Margins &amp; spot</button>
   </div>
+  ${recent.length ? '' : `<div class="howto" aria-label="How it works">
+    <div><b>1</b><span class="small">Photo front &amp; back</span></div>
+    <div><b>2</b><span class="small">Confirm the coin</span></div>
+    <div><b>3</b><span class="small">See value &amp; comps</span></div>
+    <div><b>4</b><span class="small">Buy, save or pass</span></div>
+  </div>`}
   ${recent.length ? `<div class="card"><div class="row between"><span class="eyebrow">Recent scans</span><button class="btn-link small" data-a="go" data-s="history">All ›</button></div>
     ${recent.map((h) => histRow(h)).join('')}</div>` : ''}
   <p class="small muted">Spot: silver ${money(spot().silver)} · gold ${money(spot().gold)} (${esc(spot().asOf)})</p>
@@ -711,6 +721,7 @@ screens.pick = () => `
   <h2>Which sample coin?</h2>
   <div class="list">${SAMPLE_COINS.map((c) => `<button data-a="pickCoin" data-id="${c.id}"><span>${esc(c.name)}</span><span class="small muted">${esc(c.category)}</span></button>`).join('')}</div>`;
 
+const fieldsEdited = () => S.coin && S.coin.source === 'ai' && S.fields && ['country', 'denomination', 'year', 'mint'].some((k) => (S.fields[k] || '') !== (S.coin[k] || ''));
 screens.fields = () => {
   const f = S.fields, c = S.coin;
   const field = (k, label) => {
@@ -722,12 +733,10 @@ screens.fields = () => {
   <div class="topbar"><button class="back" data-a="scan">Retake photos</button></div>
   <div class="thumbs">${['obv', 'rev'].map((s) => S.photos[s] ? `<img src="${S.photos[s]}" alt="">` : `<div class="ph">${s === 'obv' ? 'Front' : 'Back'}</div>`).join('')}</div>
   <h2>Here's what we read</h2>
+  <p class="muted" style="margin-top:-8px">Check these against the coin. Fix anything that's off.</p>
   <div class="stack">${field('country', 'Country')}${field('denomination', 'Denomination')}${field('year', 'Year')}${field('mint', 'Mint mark')}</div>
-  <p class="small muted">Fix anything that's wrong. Corrections rerun the search and are saved to improve identification.</p>
-  ${c.source === 'ai' || S.manual
-    ? `<button class="btn-primary btn-wide" data-a="toMatch">Looks right, continue</button>
-       <button class="btn-ghost btn-wide" data-a="researchId">Search again with my edits</button>`
-    : `<button class="btn-primary btn-wide" data-a="toMatch">Looks right, continue</button>`}`;
+  <button class="btn-primary btn-wide" data-a="toMatch" id="fieldsGo">${fieldsEdited() || S.manual ? 'Search with my changes' : 'Looks right, continue'}</button>
+  <p class="small muted">If you change something, we re-check the coin with your corrections.</p>`;
 };
 
 
@@ -775,7 +784,7 @@ function aiMatch(c) {
   }
   return `
   <div class="topbar"><button class="back" data-a="go" data-s="fields">Edit details</button><span class="pill ${tone(conf === 'High' ? 'Likely' : conf === 'Medium' ? 'Possible' : 'Unlikely')}">${esc(conf)} confidence</span></div>
-  <p class="eyebrow">Match found${S.idSeconds ? ` · ${S.idSeconds}s` : ''}${S.ai && S.ai.claude_ms ? ` (Claude ${Math.round(S.ai.claude_ms / 1000)}s)` : ''}${S.ai && /haiku/i.test(S.ai.model || '') ? ' · Fast mode' : ''}</p>
+  <p class="eyebrow">Match found${S.idSeconds ? ` · ${S.idSeconds}s` : ''}${S.ai && S.ai.claude_ms >= 1000 ? ` (Claude ${Math.round(S.ai.claude_ms / 1000)}s)` : ''}${S.ai && /haiku/i.test(S.ai.model || '') ? ' · Fast mode' : ''}</p>
   <h2>${esc(c.name)}</h2>
   ${rarityBanner(c)}
   ${photos}
@@ -893,13 +902,10 @@ screens.money = () => {
            <span class="small muted">${pct(a.margin)} margin${feeOn() ? ' ' + feeNote() : ''}${a.limited ? ', from the low end of the AI estimate' : a.confirmed ? '' : ', from the low end until grade is confirmed'}${profitTxt ? ` · expected profit ${profitTxt}` : ''} · <button class="btn-link small" data-a="go" data-s="settings" style="padding:0">Change</button></span>`}
   </div>
 
-  <div class="grid3">
+  ${compsButton(c)}
+  <div class="grid2">
     <div class="tile"><span class="eyebrow">Melt</span>${a.melt > 0 ? `<b class="num">${money(a.melt)}</b>` : '<span class="small muted">No silver or gold</span>'}</div>
-    ${a.isAI
-      ? `<div class="tile"><span class="eyebrow">CPG</span>${a.cpg.length ? `<b class="num">${a.cpg.map(money).join('–')}</b><a class="small" href="https://www.greysheet.com" target="_blank" rel="noopener" style="color:var(--accent)">via CDN</a>` : `<span class="small muted">${c.lookupPending ? 'Loading…' : c.gsMismatch ? 'No exact match' : 'Not found'}</span>`}</div>`
-      : `<div class="tile"><span class="eyebrow">CPG</span><b class="num">${a.cpg.length ? a.cpg.map(money).join('–') : '—'}</b>
-      <a class="small" href="https://www.greysheet.com" target="_blank" rel="noopener" style="color:var(--accent)">via CDN</a></div>`}
-    <button class="tile" data-a="go" data-s="sales" style="border:0;min-height:0;font-weight:400;color:var(--ink);text-align:left;justify-content:flex-start;align-items:stretch"><span class="eyebrow">Sales ›</span><b class="num">${a.isAI ? '<span class="small">eBay · PCGS</span>' : salesRange(c, a.grades)}</b></button>
+    <div class="tile"><span class="eyebrow">CPG</span>${a.cpg.length ? `<b class="num">${a.cpg.map(money).join('–')}</b><a class="small" href="https://www.greysheet.com" target="_blank" rel="noopener" style="color:var(--accent)">via CDN</a>` : `<span class="small muted">${c.lookupPending ? 'Loading…' : c.gsMismatch ? 'No exact match' : 'Not found'}</span>`}</div>
   </div>
 
   ${actionArea(a)}
@@ -914,10 +920,21 @@ screens.money = () => {
 
   <div class="row between">
     <button class="btn-link" data-a="go" data-s="details">Coin details ›</button>
-    <button class="btn-link" data-a="go" data-s="sales">Sales ›</button>
+    <button class="btn-link" data-a="go" data-s="sales">More sold prices ›</button>
   </div>
   <p class="small muted" style="text-align:center">${S.feedback ? 'Thanks, noted.' : `Correct ID? <button class="btn-link small" data-a="fb" data-v="yes">Yes</button> · <button class="btn-link small" data-a="fb" data-v="no">No</button>`}</p>`;
 };
+
+// eBay sold search for this exact coin (opens eBay; nothing is scraped).
+function ebayUrl(c) {
+  let q = String(c.name || '').replace(/\(.*?\)/g, ' ').replace(/[,;]/g, ' ');
+  if (c.slab && c.slab.service && c.slab.grade) q += ` ${c.slab.service} ${c.slab.grade}`;
+  q = q.replace(/\s+/g, ' ').trim() + ' -lot -replica -copy -reproduction';
+  return `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(q)}&_sacat=11116&LH_Sold=1&LH_Complete=1&_sop=13`;
+}
+function compsButton(c) {
+  return `<a class="btn btn-wide comps" href="${ebayUrl(c)}" target="_blank" rel="noopener"><span>See eBay sold comps</span><span aria-hidden="true">↗</span></a>`;
+}
 
 // What the dealer can do with this coin. Nothing is pre-assigned to a lot.
 function actionArea(a) {
@@ -993,19 +1010,18 @@ function calcInner(c, a) {
 screens.sales = () => {
   const c = S.coin;
   const a = analyze(c, S.grades, S.confirmed, S.cost, null, S.expSale);
-  const q = encodeURIComponent(c.name.replace(/\(.*\)/, '').trim());
   return `
   <div class="topbar"><button class="back" data-a="go" data-s="money">Back</button></div>
-  <h2>Recent sales</h2>
-  ${a.isAI ? `<div class="card"><p>Sales records for ${esc(c.name)} appear here once Numista is connected. Check sold prices now:</p></div>` : `
-  <p class="small muted">${esc(c.name)} · highlighted rows match ${esc(gradeLabel(c, a.grades))}</p>
-  <div class="card"><div class="tablewrap"><table>
+  <h2>Sold prices</h2>
+  <p class="small muted">${esc(c.name)}${c.skipGrade ? '' : ` · compare against ${esc(gradeLabel(c, a.grades))} coins`}</p>
+  ${compsButton(c)}
+  <p class="small muted" style="margin-top:-6px">eBay sold listings, newest first. Lots, replicas and copies are filtered out.</p>
+  ${c.sales && c.sales.length ? `<div class="card"><div class="tablewrap"><table>
     <thead><tr><th>Date</th><th>Grade</th><th class="r">Price</th></tr></thead>
-    <tbody>${c.sales.map((s) => `<tr class="${a.grades.includes(s.grade) ? 'hl' : ''}"><td class="num">${s.date}</td><td>${s.grade === 'ANY' ? '—' : s.grade}</td><td class="r num">${money(s.price)}</td></tr>`).join('')}</tbody>
-  </table></div>
-  <p class="small muted">Sample sales. Live version: Numista sales records.</p></div>`}
-  <a class="btn btn-ghost btn-wide" href="https://www.ebay.com/sch/i.html?_nkw=${q}&LH_Sold=1&LH_Complete=1" target="_blank" rel="noopener">Search eBay sold</a>
-  <a class="btn btn-ghost btn-wide" href="https://www.pcgs.com/auctionprices" target="_blank" rel="noopener">PCGS auction results</a>`;
+    <tbody>${c.sales.map((x) => `<tr class="${a.grades.includes(x.grade) ? 'hl' : ''}"><td class="num">${x.date}</td><td>${x.grade === 'ANY' ? '—' : x.grade}</td><td class="r num">${money(x.price)}</td></tr>`).join('')}</tbody>
+  </table></div><p class="small muted">Sample sales for the demo coin.</p></div>` : ''}
+  <a class="btn btn-ghost btn-wide" href="https://www.pcgs.com/auctionprices" target="_blank" rel="noopener">PCGS auction results ↗</a>
+  <p class="small muted">Best for slabbed coins. Search the coin by name on the PCGS page.</p>`;
 };
 
 screens.details = () => {
@@ -1872,7 +1888,7 @@ document.addEventListener('toggle', (e) => { if (e.target && e.target.id === 'mo
 
 document.addEventListener('input', (e) => {
   const el = e.target;
-  if (el.dataset.field) { S.fields[el.dataset.field] = el.value; return; }
+  if (el.dataset.field) { S.fields[el.dataset.field] = el.value; const b = document.getElementById('fieldsGo'); if (b) b.textContent = fieldsEdited() || S.manual ? 'Search with my changes' : 'Looks right, continue'; return; }
   if (el.id === 'cost') {
     S.cost = el.value;
     const a = analyze(S.coin, S.grades, S.confirmed, S.cost, null, S.expSale);
