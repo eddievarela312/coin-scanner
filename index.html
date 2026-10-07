@@ -1,0 +1,1267 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>Scottsdale Coin Scanner</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Figtree:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+/* Layout: one phone-width column, decision numbers first, detail one tap deeper. */
+:root{
+  --bg:#eef1f4; --surface:#ffffff; --sunk:#e4e8ed; --ink:#141a22; --muted:#5b6673; --line:#d4dae1;
+  --accent:#8a5a12; --accent-soft:#f3e7d2; --accent-ink:#ffffff;
+  --good:#1f7a4d; --good-soft:#dcefe4; --warn:#9a6200; --warn-soft:#f6ead2; --bad:#b3322c; --bad-soft:#f6dcda;
+  --f-display:"Bricolage Grotesque", "Avenir Next", system-ui, sans-serif;
+  --f-body:"Figtree", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-data:"JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --r:14px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0f1318; --surface:#171d25; --sunk:#11161c; --ink:#e8ecf1; --muted:#93a0ad; --line:#29323d;
+  --accent:#e0ac4f; --accent-soft:#3a2d17; --accent-ink:#1a1206;
+  --good:#4cc38a; --good-soft:#163527; --warn:#f0b44c; --warn-soft:#3a2c12; --bad:#f07167; --bad-soft:#3d1c1a;
+  color-scheme:dark;}}
+:root[data-theme="dark"]{
+  --bg:#0f1318; --surface:#171d25; --sunk:#11161c; --ink:#e8ecf1; --muted:#93a0ad; --line:#29323d;
+  --accent:#e0ac4f; --accent-soft:#3a2d17; --accent-ink:#1a1206;
+  --good:#4cc38a; --good-soft:#163527; --warn:#f0b44c; --warn-soft:#3a2c12; --bad:#f07167; --bad-soft:#3d1c1a;
+  color-scheme:dark;}
+
+*{box-sizing:border-box}
+html,body{min-height:100%}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:16px;line-height:1.45;padding-inline:16px;padding-block:0 120px;-webkit-font-smoothing:antialiased}
+#app{max-width:460px;margin:0 auto;display:flex;flex-direction:column;gap:16px;padding-top:12px}
+h1,h2,h3{font-family:var(--f-display);margin:0;text-wrap:balance;letter-spacing:-.01em}
+h1{font-size:2rem;line-height:1.05}
+h2{font-size:1.45rem;line-height:1.15}
+h3{font-size:1rem}
+p{margin:0}
+.muted{color:var(--muted)}
+.small{font-size:.85rem}
+.eyebrow{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.09em;color:var(--muted)}
+.num{font-variant-numeric:tabular-nums}
+.mono{font-family:var(--f-data);font-size:.82rem}
+.row{display:flex;gap:12px;align-items:center}
+.between{justify-content:space-between}
+.stack{display:flex;flex-direction:column;gap:12px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.tile{background:var(--sunk);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:4px;min-width:0}
+.tile b{font-size:1.05rem}
+button,.btn{font:inherit;font-weight:600;border:0;border-radius:12px;padding:15px 18px;cursor:pointer;text-align:center;text-decoration:none;display:inline-flex;justify-content:center;align-items:center;gap:8px;min-height:52px}
+.btn-primary{background:var(--accent);color:var(--accent-ink)}
+.btn-ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+.btn-link{background:none;color:var(--accent);padding:8px 0;min-height:0;font-weight:600}
+.btn-wide{width:100%}
+button:disabled{opacity:.45;cursor:not-allowed}
+button:focus-visible,input:focus-visible,a:focus-visible,label:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.topbar{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:44px}
+.back{background:none;border:0;color:var(--muted);padding:8px 0;min-height:44px;font-weight:600}
+.banner{background:var(--accent-soft);color:var(--ink);border-radius:10px;padding:10px 12px;font-size:.85rem}
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:.78rem;font-weight:700;border-radius:999px;padding:4px 10px;white-space:nowrap}
+.pill.good{background:var(--good-soft);color:var(--good)}
+.pill.warn{background:var(--warn-soft);color:var(--warn)}
+.pill.bad{background:var(--bad-soft);color:var(--bad)}
+.pill.neutral{background:var(--sunk);color:var(--muted)}
+.big{font-family:var(--f-display);font-weight:700;font-size:2.4rem;line-height:1;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.mid{font-family:var(--f-display);font-weight:700;font-size:1.7rem;line-height:1;font-variant-numeric:tabular-nums}
+input[type=text],input[type=number]{font:inherit;width:100%;padding:13px 14px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--ink);min-height:50px}
+input.uncertain{border-color:var(--warn);background:var(--warn-soft)}
+label.field{display:flex;flex-direction:column;gap:6px;font-weight:600;font-size:.9rem}
+.flag{color:var(--warn);font-weight:700;font-size:.78rem}
+/* Capture */
+.capture{position:relative;aspect-ratio:1/1;max-width:100%;border-radius:20px;background:var(--sunk);display:grid;place-items:center;overflow:hidden;border:1px solid var(--line)}
+.capture .ring{width:72%;aspect-ratio:1/1;border-radius:50%;border:3px dashed var(--accent);display:grid;place-items:center;text-align:center;padding:16px;color:var(--muted)}
+.capture img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.steps{display:flex;gap:6px}
+.steps span{height:4px;flex:1;border-radius:2px;background:var(--line)}
+.steps span.on{background:var(--accent)}
+.thumbs{display:flex;gap:10px}
+.thumbs img,.thumbs .ph{width:92px;height:92px;border-radius:50%;object-fit:cover;background:var(--sunk);border:1px solid var(--line);display:grid;place-items:center;font-size:.72rem;color:var(--muted);text-align:center;padding:6px}
+.spinner{width:48px;height:48px;border-radius:50%;border:4px solid var(--line);border-top-color:var(--accent);animation:spin 0.9s linear infinite;margin:40px auto 8px}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion: reduce){.spinner{animation-duration:3s}}
+.list{display:flex;flex-direction:column}
+.list button{background:var(--surface);border:1px solid var(--line);border-radius:12px;justify-content:space-between;text-align:left;margin-bottom:8px;color:var(--ink);font-weight:500}
+.list button:disabled{opacity:.5;cursor:not-allowed}
+/* Grade chips */
+.chips{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.chip{background:var(--surface);border:1.5px solid var(--line);color:var(--ink);border-radius:12px;min-height:56px;font-family:var(--f-display);font-size:1.15rem}
+.chip.sugg{border-color:var(--accent);background:var(--accent-soft)}
+.chip.on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+/* Meter */
+.meter{position:relative;height:10px;border-radius:5px;background:linear-gradient(90deg,var(--bad),var(--warn) 50%,var(--good))}
+.meter i{position:absolute;top:-5px;width:4px;height:20px;border-radius:2px;background:var(--ink);transform:translateX(-50%)}
+.factor{display:grid;grid-template-columns:1fr auto;gap:2px 10px;font-size:.85rem}
+.bar{grid-column:1/-1;height:6px;border-radius:3px;background:var(--sunk);overflow:hidden}
+.bar span{display:block;height:100%;background:var(--accent)}
+details summary{cursor:pointer;font-weight:600;color:var(--accent);list-style:none;padding:6px 0}
+details summary::-webkit-details-marker{display:none}
+/* Tables */
+.tablewrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:.88rem}
+td,th{padding:9px 6px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+th{font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:700}
+td.r,th.r{text-align:right}
+tr.hl td{background:var(--accent-soft)}
+.coinrow{display:grid;grid-template-columns:44px 1fr auto;gap:12px;align-items:center;padding:12px 0;border-bottom:1px solid var(--line)}
+.coinrow:last-child{border-bottom:0}
+.coinrow img,.coinrow .ph{width:44px;height:44px;border-radius:50%;object-fit:cover;background:var(--sunk);border:1px solid var(--line)}
+.coinrow .costin{width:96px;min-height:40px;padding:8px 10px;text-align:right}
+.dot{width:10px;height:10px;border-radius:50%;display:inline-block}
+/* Bottom bar */
+.pbar{position:fixed;left:0;right:0;bottom:0;padding:10px 16px calc(10px + env(safe-area-inset-bottom,0px));background:var(--surface);border-top:1px solid var(--line);z-index:5}
+.pbar button{width:100%;max-width:460px;margin:0 auto;display:flex;justify-content:space-between;background:var(--ink);color:var(--bg);min-height:54px}
+.toast{background:var(--good-soft);color:var(--good);border-radius:12px;padding:12px 14px;font-weight:600}
+.home-hero{padding-top:28px;display:flex;flex-direction:column;gap:10px}
+.coinmark{width:64px;height:64px;border-radius:50%;background:radial-gradient(circle at 35% 30%,var(--accent-soft),var(--accent));box-shadow:inset 0 0 0 5px color-mix(in srgb,var(--accent) 70%,transparent)}
+.slider{width:100%;accent-color:var(--accent)}
+.feas{border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:6px}
+.feas.good{background:var(--good-soft)} .feas.warn{background:var(--warn-soft)} .feas.bad{background:var(--bad-soft)} .feas.neutral{background:var(--sunk)}
+.confirmbox{border:1px solid var(--bad);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:10px}
+</style>
+
+</head>
+<body>
+<div id="app" aria-live="polite"></div>
+<div id="pbar" class="pbar" hidden></div>
+
+<script>
+// Coin Scanner pricing engine.
+// Pure functions only: no network, no DOM. The same file moves into the
+// Next.js app unchanged; only the data feeding it changes (sample -> live APIs).
+//
+// Definitions used everywhere:
+//   margin  = profit / sell price   (a 25% margin on a $100 sale = $25 profit)
+//   markup is never used, to avoid confusion.
+
+const GRADES = ['VG', 'F', 'VF', 'XF', 'AU', 'UNC'];
+const TODAY = new Date('2026-10-05T12:00:00');
+
+const round2 = (n) => Math.round(n * 100) / 100;
+const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
+
+function percentile(values, p) {
+  const s = [...values].sort((a, b) => a - b);
+  if (!s.length) return null;
+  const i = (s.length - 1) * p;
+  const lo = Math.floor(i), hi = Math.ceil(i);
+  return s[lo] + (s[hi] - s[lo]) * (i - lo);
+}
+
+function median(values) { return percentile(values, 0.5); }
+
+// Melt from actual silver/gold weight (troy oz) and spot ($/oz).
+function melt(coin, spot) {
+  return round2((coin.asw || 0) * spot.silver + (coin.agw || 0) * spot.gold);
+}
+
+// Grades that apply: bullion-type coins price as "ANY" grade.
+function gradeKeys(coin, grades) {
+  return coin.skipGrade ? ['ANY'] : grades;
+}
+
+function salesFor(coin, grades) {
+  const keys = gradeKeys(coin, grades);
+  return coin.sales.filter((s) => keys.includes(s.grade));
+}
+
+// Market range for ONE grade.
+//   3+ sales at that grade -> middle half of those sales (25th-75th pct)
+//   1-2 sales             -> span of those sales and CPG
+//   0 sales, CPG only     -> 85%-100% of CPG (CPG is a retail guide)
+//   nothing               -> null ("not enough data")
+// Never below melt.
+function marketForGrade(coin, grade, spot) {
+  const m = melt(coin, spot);
+  const prices = coin.sales.filter((s) => s.grade === grade).map((s) => s.price);
+  const cpg = coin.cpg ? coin.cpg[grade] : undefined;
+  let low, high, basis;
+  if (prices.length >= 3) {
+    low = percentile(prices, 0.25);
+    high = percentile(prices, 0.75);
+    basis = `${prices.length} recent sales`;
+  } else if (prices.length >= 1 && cpg) {
+    const all = [...prices, cpg];
+    low = Math.min(...all);
+    high = Math.max(...all);
+    basis = `${prices.length} sale${prices.length > 1 ? 's' : ''} + CPG`;
+  } else if (prices.length >= 1) {
+    low = Math.min(...prices);
+    high = Math.max(...prices);
+    basis = `${prices.length} sale${prices.length > 1 ? 's' : ''} only`;
+  } else if (cpg) {
+    low = cpg * 0.85;
+    high = cpg;
+    basis = 'CPG only (retail guide)';
+  } else {
+    return null;
+  }
+  return {
+    low: round2(Math.max(low, m)),
+    high: round2(Math.max(high, m)),
+    basis,
+    meltFloor: low < m,
+  };
+}
+
+// Market range across one or more grades (an unconfirmed grade range).
+function marketRange(coin, grades, spot) {
+  const keys = gradeKeys(coin, grades);
+  const parts = keys.map((g) => marketForGrade(coin, g, spot)).filter(Boolean);
+  if (!parts.length) return null;
+  const low = Math.min(...parts.map((p) => p.low));
+  const high = Math.max(...parts.map((p) => p.high));
+  return {
+    low, high,
+    mid: round2((low + high) / 2),
+    basis: parts.length > 1 && parts.every((p) => /recent sales$/.test(p.basis))
+      ? `${coin.sales.filter((s) => keys.includes(s.grade)).length} recent sales across ${keys[0]}–${keys[keys.length - 1]}`
+      : parts.map((p) => p.basis).join(' · '),
+    grades: keys,
+  };
+}
+
+// Target buy: confirmed grade -> midpoint; unconfirmed -> low end (never overpay
+// while the grade is still a range).
+function targetBuy(range, margin, gradeConfirmed) {
+  if (!range) return null;
+  const base = gradeConfirmed ? range.mid : range.low;
+  return round2(base * (1 - margin));
+}
+
+// Liquidity meter, 0-100. Four visible factors so the dealer sees WHY.
+function liquidity(coin, spot, range) {
+  const m = melt(coin, spot);
+  const yearAgo = new Date(TODAY); yearAgo.setFullYear(yearAgo.getFullYear() - 1);
+  const recent = coin.sales.filter((s) => new Date(s.date) >= yearAgo);
+  const n = recent.length;
+  const mid = range ? range.mid : m;
+
+  const velocity = clamp(Math.log(1 + n) / Math.log(1 + 12), 0, 1); // 12+ sales/yr = full
+  const meltShare = mid > 0 ? clamp(m / mid, 0, 1) : 0;              // anyone buys metal
+  const priceBand = mid <= 100 ? 1 : mid <= 500 ? 0.8 : mid <= 2000 ? 0.55 : 0.35;
+  let consistency = 0.4;                                              // unknown -> neutral-low
+  const prices = recent.map((s) => s.price);
+  if (prices.length >= 3) {
+    const mean = prices.reduce((a, b) => a + b, 0) / prices.length;
+    const sd = Math.sqrt(prices.reduce((a, b) => a + (b - mean) ** 2, 0) / prices.length);
+    consistency = clamp(1 - (sd / mean) / 0.5, 0, 1);
+  }
+
+  const factors = [
+    { key: 'velocity', label: 'Sales activity', value: velocity, weight: 0.4,
+      note: `${n} sale${n === 1 ? '' : 's'} in the last 12 months` },
+    { key: 'meltShare', label: 'Metal backing', value: meltShare, weight: 0.25,
+      note: `Melt is ${Math.round(meltShare * 100)}% of value` },
+    { key: 'consistency', label: 'Price consistency', value: consistency, weight: 0.2,
+      note: prices.length >= 3 ? 'Spread of recent sale prices' : 'Too few sales to measure' },
+    { key: 'priceBand', label: 'Buyer pool', value: priceBand, weight: 0.15,
+      note: mid <= 100 ? 'Under $100: many buyers' : mid <= 500 ? '$100–500' : mid <= 2000 ? '$500–2,000' : 'Over $2,000: fewer buyers' },
+  ];
+  const score = Math.round(factors.reduce((a, f) => a + f.value * f.weight, 0) * 100);
+  const label = score >= 70 ? 'Fast' : score >= 45 ? 'Moderate' : 'Slow';
+  const confidence = n >= 6 ? 'High' : n >= 3 ? 'Medium' : 'Low';
+  return { score, label, factors, confidence, salesCount: n };
+}
+
+// Margin feasibility: can this cost + target margin actually be sold for?
+// requiredSell = cost / (1 - margin)
+function feasibility(coin, grades, cost, margin, spot) {
+  if (!(cost > 0)) return null;
+  const requiredSell = round2(cost / (1 - margin));
+  const prices = salesFor(coin, grades).map((s) => s.price);
+  if (prices.length >= 3) {
+    const hits = prices.filter((p) => p >= requiredSell).length;
+    const share = hits / prices.length;
+    const med = median(prices);
+    return {
+      requiredSell, basis: 'sales', hits, total: prices.length, share,
+      status: share >= 0.6 ? 'Likely' : share >= 0.3 ? 'Possible' : 'Unlikely',
+      marginAtMedian: round2((med - cost) / med),
+      medianSale: round2(med),
+    };
+  }
+  const keys = gradeKeys(coin, grades);
+  const cpgs = keys.map((g) => coin.cpg && coin.cpg[g]).filter(Boolean);
+  if (cpgs.length) {
+    const cpg = Math.max(...cpgs);
+    return {
+      requiredSell, basis: 'cpg', cpg,
+      status: requiredSell <= cpg * 0.85 ? 'Likely' : requiredSell <= cpg ? 'Possible' : 'Unlikely',
+      marginAtMedian: null,
+    };
+  }
+  return { requiredSell, basis: 'none', status: 'Unknown' };
+}
+
+// Highest margin the market supports at this cost (using the median sale).
+function maxMarginAt(range, cost) {
+  if (!range || !(cost > 0)) return null;
+  return round2((range.mid - cost) / range.mid);
+}
+
+// Purchase / bulk-buy totals.
+//   items: [{ cost, low, high, mid, melt, liquidity, sellBasis }]
+//   lotOffer: optional single offer for the whole lot (overrides per-coin costs,
+//             allocated across coins by expected sale value)
+function purchaseTotals(items, margin, lotOffer) {
+  const sum = (k) => round2(items.reduce((a, it) => a + (it[k] || 0), 0));
+  const low = sum('low'), high = sum('high'), mid = sum('mid'), meltTotal = sum('melt');
+  const costEntered = sum('cost');
+  const cost = lotOffer > 0 ? lotOffer : costEntered;
+  const maxOffer = round2(items.reduce((a, it) => a + it.targetBase * (1 - margin), 0));
+  const profitMid = round2(mid - cost);
+  const profitLow = round2(low - cost);
+  const profitHigh = round2(high - cost);
+  const marginMid = mid > 0 ? round2(profitMid / mid) : 0;
+  const requiredSell = round2(cost / (1 - margin));
+  const status = !(cost > 0) ? 'Unknown'
+    : requiredSell <= low ? 'Likely'
+    : requiredSell <= high ? 'Possible' : 'Unlikely';
+  const scored = items.filter((it) => it.liquidity != null && it.mid > 0);
+  const scoredMid = scored.reduce((a, it) => a + it.mid, 0);
+  const liq = scored.length
+    ? Math.round(scored.reduce((a, it) => a + it.liquidity * it.mid, 0) / scoredMid)
+    : null;
+  const allocated = items.map((it) => ({
+    ...it,
+    allocCost: lotOffer > 0 && mid > 0 ? round2(lotOffer * (it.mid / mid)) : it.cost,
+  }));
+  return { count: items.length, low, high, mid, meltTotal, cost, costEntered, maxOffer,
+    profitMid, profitLow, profitHigh, marginMid, requiredSell, status, liquidity: liq, allocated };
+}
+
+if (typeof module !== 'undefined') {
+  module.exports = { GRADES, melt, marketForGrade, marketRange, targetBuy, liquidity,
+    feasibility, maxMarginAt, purchaseTotals, percentile, median };
+}
+
+// SAMPLE DATA ONLY. Prices and sales are invented placeholders for the prototype.
+// Specs (weight, fineness, ASW/AGW) are approximate. Live data replaces all of this
+// once Numista, metals.dev and Greysheet keys are connected.
+
+const SAMPLE_SPOT = { silver: 75.5, gold: 4790, asOf: 'Sample spot' };
+
+const SAMPLE_COINS = [
+  {
+    id: 'mx-peso-1918',
+    name: '1918 Mexico 1 Peso',
+    country: 'Mexico', denomination: '1 Peso', year: '1918', mint: 'Mexico City (Mo)',
+    composition: 'Silver', fineness: '.800', weight: '18.13 g', diameter: '33 mm',
+    asw: 0.4663, mintage: '3,050,000', numista: 'N# sample-1', km: 'KM# 454',
+    category: 'World silver', uncertain: ['mint'],
+    suggestedGrades: ['VF', 'XF'], gradeSensitive: false, skipGrade: false,
+    cpg: { VG: 38, F: 45, VF: 60, XF: 95, AU: 160, UNC: 300 },
+    sales: [
+      { date: '2026-09-21', grade: 'XF', price: 102 }, { date: '2026-09-02', grade: 'XF', price: 95 },
+      { date: '2026-08-14', grade: 'VF', price: 58 }, { date: '2026-07-30', grade: 'XF', price: 108 },
+      { date: '2026-07-02', grade: 'XF', price: 91 }, { date: '2026-05-19', grade: 'VF', price: 63 },
+      { date: '2026-04-11', grade: 'AU', price: 151 }, { date: '2026-02-27', grade: 'XF', price: 88 },
+      { date: '2025-12-09', grade: 'VF', price: 61 },
+    ],
+    alternates: ['1919 Mexico 1 Peso', '1918 Mexico 50 Centavos'],
+  },
+  {
+    id: 'us-morgan-1921s',
+    name: '1921-S Morgan Dollar',
+    country: 'United States', denomination: '1 Dollar', year: '1921', mint: 'San Francisco (S)',
+    composition: 'Silver', fineness: '.900', weight: '26.73 g', diameter: '38.1 mm',
+    asw: 0.7734, mintage: '21,695,000', numista: 'N# sample-2', km: 'KM# 110',
+    category: 'US silver dollar', uncertain: ['mint'],
+    suggestedGrades: ['AU', 'UNC'], gradeSensitive: true, skipGrade: false,
+    cpg: { VG: 62, F: 64, VF: 66, XF: 70, AU: 78, UNC: 115 },
+    sales: [
+      { date: '2026-09-28', grade: 'AU', price: 74 }, { date: '2026-09-25', grade: 'UNC', price: 98 },
+      { date: '2026-09-19', grade: 'AU', price: 76 }, { date: '2026-09-11', grade: 'UNC', price: 120 },
+      { date: '2026-09-03', grade: 'XF', price: 68 }, { date: '2026-08-27', grade: 'AU', price: 79 },
+      { date: '2026-08-15', grade: 'UNC', price: 105 }, { date: '2026-08-06', grade: 'AU', price: 72 },
+      { date: '2026-07-22', grade: 'UNC', price: 132 }, { date: '2026-07-10', grade: 'VF', price: 64 },
+      { date: '2026-06-18', grade: 'AU', price: 77 }, { date: '2026-05-30', grade: 'UNC', price: 101 },
+      { date: '2026-04-21', grade: 'XF', price: 69 }, { date: '2026-03-14', grade: 'UNC', price: 110 },
+    ],
+    alternates: ['1921-D Morgan Dollar', '1921 Morgan Dollar'],
+  },
+  {
+    id: 'us-kennedy-1964',
+    name: '1964 Kennedy Half Dollar',
+    country: 'United States', denomination: '50 Cents', year: '1964', mint: 'Philadelphia (none)',
+    composition: 'Silver', fineness: '.900', weight: '12.50 g', diameter: '30.6 mm',
+    asw: 0.3617, mintage: '273,304,004', numista: 'N# sample-3', km: 'KM# 202',
+    category: 'US 90% silver', uncertain: [],
+    suggestedGrades: [], gradeSensitive: false, skipGrade: true,
+    cpg: { ANY: 30 },
+    sales: [
+      { date: '2026-09-30', grade: 'ANY', price: 29 }, { date: '2026-09-24', grade: 'ANY', price: 30 },
+      { date: '2026-09-16', grade: 'ANY', price: 28.5 }, { date: '2026-09-09', grade: 'ANY', price: 29.5 },
+      { date: '2026-08-29', grade: 'ANY', price: 29 }, { date: '2026-08-12', grade: 'ANY', price: 30.5 },
+      { date: '2026-07-25', grade: 'ANY', price: 28 }, { date: '2026-06-30', grade: 'ANY', price: 29 },
+      { date: '2026-05-15', grade: 'ANY', price: 28.5 }, { date: '2026-04-02', grade: 'ANY', price: 29 },
+      { date: '2026-02-10', grade: 'ANY', price: 28 }, { date: '2026-01-05', grade: 'ANY', price: 28.5 },
+    ],
+    alternates: ['1964-D Kennedy Half Dollar'],
+  },
+  {
+    id: 'mx-50p-1947',
+    name: '1947 Mexico 50 Pesos (gold)',
+    country: 'Mexico', denomination: '50 Pesos', year: '1947', mint: 'Mexico City (Mo)',
+    composition: 'Gold', fineness: '.900', weight: '41.67 g', diameter: '37 mm',
+    agw: 1.2057, mintage: 'Restrike (large)', numista: 'N# sample-4', km: 'KM# 481',
+    category: 'Gold bullion coin', uncertain: [],
+    suggestedGrades: [], gradeSensitive: false, skipGrade: true,
+    cpg: { ANY: 5950 },
+    sales: [
+      { date: '2026-09-26', grade: 'ANY', price: 5860 }, { date: '2026-09-12', grade: 'ANY', price: 5905 },
+      { date: '2026-08-30', grade: 'ANY', price: 5840 }, { date: '2026-08-08', grade: 'ANY', price: 5890 },
+      { date: '2026-07-17', grade: 'ANY', price: 5875 },
+    ],
+    alternates: ['1947 Mexico 20 Pesos (gold)'],
+  },
+  {
+    id: 'us-quarter-1932d',
+    name: '1932-D Washington Quarter',
+    country: 'United States', denomination: '25 Cents', year: '1932', mint: 'Denver (D)',
+    composition: 'Silver', fineness: '.900', weight: '6.25 g', diameter: '24.3 mm',
+    asw: 0.1808, mintage: '436,800', numista: 'N# sample-5', km: 'KM# 164',
+    category: 'US key date', uncertain: ['year', 'mint'],
+    suggestedGrades: ['F', 'VF'], gradeSensitive: true, skipGrade: false,
+    cpg: { VG: 120, F: 160, VF: 210, XF: 300, AU: 600, UNC: 1200 },
+    sales: [
+      { date: '2026-08-21', grade: 'F', price: 148 }, { date: '2026-06-03', grade: 'VF', price: 195 },
+      { date: '2026-02-17', grade: 'F', price: 171 }, { date: '2025-11-28', grade: 'XF', price: 285 },
+    ],
+    alternates: ['1932-S Washington Quarter', '1932 Washington Quarter'],
+  },
+];
+
+if (typeof module !== 'undefined') module.exports = { SAMPLE_SPOT, SAMPLE_COINS };
+
+
+/* ---------- state ---------- */
+const store = {
+  get(k, d){ try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; }catch(e){ return d; } },
+  set(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
+};
+const S = {
+  screen: 'home', photos: {}, coin: null, fields: null, grades: [], confirmed: false,
+  cost: '', expSale: '', added: false, candidates: false, feedback: null, confirmClear: false,
+  files: {}, ai: null, idError: '', idSeconds: 0, idUnavailable: false, manual: false, log: [],
+  settings: store.get('cs.settings', { marginNumis: 0.25, marginBullion: 0.05, spot: { ...SAMPLE_SPOT } }),
+  purchase: store.get('cs.purchase', { no: 1, items: [], lotOffer: '', lotMargin: null }),
+};
+const save = () => { store.set('cs.settings', S.settings); store.set('cs.purchase', S.purchase); };
+const coinById = (id) => SAMPLE_COINS.find((c) => c.id === id);
+const marginFor = (coin) => coin.skipGrade ? S.settings.marginBullion : S.settings.marginNumis;
+const spot = () => S.settings.spot;
+
+/* ---------- formatting ---------- */
+const money = (n) => n == null || isNaN(n) ? '—'
+  : n >= 20 || n <= -20 ? (n < 0 ? '-$' : '$') + Math.round(Math.abs(n)).toLocaleString('en-US')
+  : '$' + n.toFixed(2);
+const range$ = (r) => r ? (money(r.low) === money(r.high) ? money(r.low) : `${money(r.low)}–${money(r.high)}`) : '—';
+const pct = (x) => x == null ? '—' : Math.round(x * 100) + '%';
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const gradeLabel = (coin, grades) => coin.skipGrade ? 'Grade not needed' : grades.length > 1 ? `${grades[0]}–${grades[grades.length - 1]}` : grades[0];
+const tone = (status) => ({ Likely: 'good', Possible: 'warn', Unlikely: 'bad', Fast: 'good', Moderate: 'warn', Slow: 'bad' }[status] || 'neutral');
+
+/* ---------- derived values for one coin ---------- */
+// AI-identified coins have no market data yet: value comes from the dealer's
+// expected sale price, or else Claude's rough estimate (clearly labeled).
+function aiRange(coin, g, expSale) {
+  const m = melt(coin, spot());
+  const exp = parseFloat(expSale);
+  if (exp > 0) return { low: exp, high: exp, mid: exp, basis: 'your expected sale price', grades: g, source: 'dealer' };
+  const parts = g.map((k) => coin.aiValue && coin.aiValue[k]).filter((v) => Array.isArray(v) && v.length === 2 && v[1] > 0);
+  if (!parts.length) return null;
+  const low = Math.max(Math.min(...parts.map((p) => +p[0])), m);
+  const high = Math.max(Math.max(...parts.map((p) => +p[1])), m);
+  return { low, high, mid: Math.round((low + high) / 2 * 100) / 100, basis: 'Claude\'s rough estimate, not market data', grades: g, source: 'ai' };
+}
+
+function analyze(coin, grades, confirmed, costInput, marginOverride, expSale) {
+  const m = marginOverride ?? marginFor(coin);
+  const g = coin.skipGrade ? ['ANY'] : grades;
+  const isConfirmed = coin.skipGrade || confirmed;
+  const isAI = coin.source === 'ai';
+  const range = isAI ? aiRange(coin, g, expSale) : marketRange(coin, g, spot());
+  const tb = targetBuy(range, m, isConfirmed);
+  const hideTarget = coin.gradeSensitive && !isConfirmed;
+  const cost = parseFloat(costInput);
+  const effCost = cost > 0 ? cost : tb;
+  const liq = isAI ? null : liquidity(coin, spot(), range);
+  const feas = !isAI && effCost > 0 ? feasibility(coin, g, effCost, m, spot()) : null;
+  return {
+    isAI, margin: m, grades: g, confirmed: isConfirmed, range, targetBuy: tb, hideTarget, liq, feas,
+    melt: melt(coin, spot()), cost: cost > 0 ? cost : null, effCost,
+    profitLow: range && effCost ? range.low - effCost : null,
+    profitHigh: range && effCost ? range.high - effCost : null,
+    maxMargin: maxMarginAt(range, effCost),
+    targetBase: range ? (isConfirmed ? range.mid : range.low) : 0,
+    cpg: g.map((k) => coin.cpg && coin.cpg[k]).filter(Boolean),
+  };
+}
+
+/* ---------- screens ---------- */
+const screens = {};
+
+screens.home = () => `
+  <div class="home-hero">
+    <div class="coinmark" aria-hidden="true"></div>
+    <h1>Coin Scanner</h1>
+    <p class="muted">Identify. Value. Buy smarter.</p>
+  </div>
+  <div class="banner"><b>Prototype.</b> Identification is live and reads your photos with Claude. Prices are Claude's rough estimates or your own numbers until Greysheet and Numista are connected. Spot is a sample: set today's price in Margins &amp; spot.</div>
+  <button class="btn-primary btn-wide" data-a="scan">Scan a coin</button>
+  <button class="btn-ghost btn-wide" data-a="demo">Try the sample coins instead</button>
+  <div class="grid2">
+    <button class="btn-ghost" data-a="go" data-s="purchase">Purchase${S.purchase.items.length ? ` (${S.purchase.items.length})` : ''}</button>
+    <button class="btn-ghost" data-a="go" data-s="settings">Margins &amp; spot</button>
+  </div>
+  <p class="small muted">Spot: silver ${money(spot().silver)} · gold ${money(spot().gold)} (${esc(spot().asOf)})</p>`;
+
+screens.capture = () => {
+  const side = S.photos.obv ? 'rev' : 'obv';
+  const img = S.photos[side];
+  return `
+  <div class="topbar"><button class="back" data-a="go" data-s="home">Cancel</button><span class="small muted">Step ${side === 'obv' ? 1 : 2} of 2</span></div>
+  <div class="steps"><span class="on"></span><span class="${side === 'rev' ? 'on' : ''}"></span></div>
+  <h2>${side === 'obv' ? 'Photograph the front' : 'Flip the coin over'}</h2>
+  <label class="capture" for="cam">
+    ${img ? `<img src="${img}" alt="">` : `<div class="ring">Tap to take a photo<br><span class="small">Center the coin in the circle</span></div>`}
+  </label>
+  <input id="cam" type="file" accept="image/*" capture="environment" hidden>
+  <input id="lib" type="file" accept="image/*" hidden>
+  <p class="small muted">Fill most of the circle. Tilt slightly to avoid glare. A plain dark background works best for raw coins. For slabs, make sure the label is readable.</p>
+  <div class="row between">
+    <label class="btn-link" for="lib" style="cursor:pointer">Choose from photos</label>
+    ${side === 'rev' ? '<button class="btn-link" data-a="frontOnly">Use front only</button>' : ''}
+  </div>`;
+};
+
+screens.identifying = () => `
+  <div class="spinner" role="status" aria-label="Reading the coin"></div>
+  <h2 style="text-align:center">Reading the coin…</h2>
+  <p class="muted small num" style="text-align:center"><span id="elapsed">0</span>s · usually 10–40 seconds</p>
+  <p class="muted small" style="text-align:center">The first scan asks you to allow Claude for this page.</p>
+  <button class="btn-ghost btn-wide" data-a="stopId">Stop</button>`;
+
+screens.idfail = () => `
+  <div class="topbar"><button class="back" data-a="go" data-s="home">Home</button></div>
+  <h2>We couldn't confidently identify this coin</h2>
+  <p class="muted">${esc(S.idError || 'Try sharper photos, or enter what you can read and search again.')}</p>
+  ${S.ai && S.ai.photo_feedback && !/no image/i.test(S.ai.photo_feedback) ? `<div class="banner">${esc(S.ai.photo_feedback)}</div>` : ''}
+  <button class="btn-primary btn-wide" data-a="scan">Try new photos</button>
+  <button class="btn-ghost btn-wide" data-a="manual">Enter details and search</button>`;
+
+screens.code = () => `
+  <div class="topbar"><button class="back" data-a="go" data-s="home">Cancel</button></div>
+  <h2>Enter access code</h2>
+  <p class="muted">This keeps strangers from using your scans. You only enter it once on this phone.</p>
+  ${S.codeWrong ? '<p class="flag">That code didn\'t work. Try again.</p>' : ''}
+  <label class="field" for="code">Access code<input id="code" type="text" autocomplete="off" autocapitalize="off"></label>
+  <button class="btn-primary btn-wide" data-a="saveCode">Continue</button>`;
+
+screens.pick = () => `
+  <div class="topbar"><button class="back" data-a="go" data-s="home">Home</button></div>
+  <div class="banner">${S.idUnavailable ? '<b>Photo identification isn\'t available in this view.</b> Open the page inside Claude to use it. Meanwhile, try the flow with a sample coin.' : '<b>Demo mode.</b> Sample coins with sample prices and sales, so you can see liquidity and margin feasibility working.'}</div>
+  <h2>Which sample coin?</h2>
+  <div class="list">${SAMPLE_COINS.map((c) => `<button data-a="pickCoin" data-id="${c.id}"><span>${esc(c.name)}</span><span class="small muted">${esc(c.category)}</span></button>`).join('')}</div>`;
+
+screens.fields = () => {
+  const f = S.fields, c = S.coin;
+  const field = (k, label) => {
+    const unsure = c.uncertain.includes(k);
+    return `<label class="field" for="f-${k}">${label}${unsure ? ' <span class="flag">Check this</span>' : ''}
+      <input id="f-${k}" type="text" data-field="${k}" value="${esc(f[k])}" class="${unsure ? 'uncertain' : ''}"></label>`;
+  };
+  return `
+  <div class="topbar"><button class="back" data-a="scan">Retake photos</button></div>
+  <div class="thumbs">${['obv', 'rev'].map((s) => S.photos[s] ? `<img src="${S.photos[s]}" alt="">` : `<div class="ph">${s === 'obv' ? 'Front' : 'Back'}</div>`).join('')}</div>
+  <h2>Here's what we read</h2>
+  <div class="stack">${field('country', 'Country')}${field('denomination', 'Denomination')}${field('year', 'Year')}${field('mint', 'Mint mark')}</div>
+  <p class="small muted">Fix anything that's wrong. Corrections rerun the search and are saved to improve identification.</p>
+  ${c.source === 'ai' || S.manual
+    ? `<button class="btn-primary btn-wide" data-a="toMatch">Looks right, continue</button>
+       <button class="btn-ghost btn-wide" data-a="researchId">Search again with my edits</button>`
+    : `<button class="btn-primary btn-wide" data-a="toMatch">Looks right, continue</button>`}`;
+};
+
+
+screens.match = () => {
+  const c = S.coin;
+  if (c.source === 'ai') return aiMatch(c);
+  const edited = Object.keys(S.fields).some((k) => S.fields[k] !== c[k]);
+  const conf = edited || c.uncertain.length > 1 ? 'Medium' : 'High';
+  if (S.candidates) {
+    return `
+    <div class="topbar"><button class="back" data-a="hideCandidates">Back</button></div>
+    <h2>Which coin is yours?</h2>
+    <div class="list">
+      <button data-a="confirmMatch"><span>${esc(c.name)}</span><span class="small muted">${esc(c.numista)}</span></button>
+      ${c.alternates.map((a) => `<button disabled><span>${esc(a)}</span><span class="small muted">Sample only</span></button>`).join('')}
+    </div>
+    <button class="btn-ghost btn-wide" data-a="go" data-s="fields">Edit details and search again</button>`;
+  }
+  return `
+  <div class="topbar"><button class="back" data-a="go" data-s="fields">Edit details</button><span class="pill ${conf === 'High' ? 'good' : 'warn'}">${conf} confidence</span></div>
+  <p class="eyebrow">Match found</p>
+  <h2>${esc(c.name)}</h2>
+  <div class="grid2">
+    <div class="tile"><span class="eyebrow">Your photos</span><div class="thumbs">${['obv', 'rev'].map((s) => S.photos[s] ? `<img src="${S.photos[s]}" alt="" style="width:56px;height:56px">` : `<div class="ph" style="width:56px;height:56px">—</div>`).join('')}</div></div>
+    <div class="tile"><span class="eyebrow">Reference</span><span class="small muted">Numista images appear here once connected</span></div>
+  </div>
+  <p class="small muted">${esc(c.numista)} · ${esc(c.km)} · Source: Numista</p>
+  <button class="btn-primary btn-wide" data-a="confirmMatch">Yes, this is it</button>
+  <button class="btn-ghost btn-wide" data-a="showCandidates">Not my coin</button>`;
+};
+
+function aiMatch(c) {
+  const conf = c.confidence || 'Medium';
+  const photos = `<div class="thumbs">${['obv', 'rev'].map((s) => S.photos[s] ? `<img src="${S.photos[s]}" alt="" style="width:72px;height:72px">` : '').join('')}</div>`;
+  if (S.candidates) {
+    return `
+    <div class="topbar"><button class="back" data-a="hideCandidates">Back</button></div>
+    <h2>Which coin is yours?</h2>
+    <p class="small muted">Tap one and Claude re-checks your photos against it.</p>
+    <div class="list">
+      ${(c.alternates || []).map((a, i) => `<button data-a="pickCandidate" data-i="${i}"><span style="min-width:0"><b>${esc(a.coin_name || a)}</b><br><span class="small muted">${esc(a.why || '')}</span></span><span aria-hidden="true">›</span></button>`).join('') || '<p class="muted">No other likely matches.</p>'}
+    </div>
+    <button class="btn-ghost btn-wide" data-a="go" data-s="fields">Edit details and search again</button>
+    <button class="btn-ghost btn-wide" data-a="scan">Try new photos</button>`;
+  }
+  return `
+  <div class="topbar"><button class="back" data-a="go" data-s="fields">Edit details</button><span class="pill ${tone(conf === 'High' ? 'Likely' : conf === 'Medium' ? 'Possible' : 'Unlikely')}">${esc(conf)} confidence</span></div>
+  <p class="eyebrow">Match found${S.idSeconds ? ` · ${S.idSeconds}s` : ''}</p>
+  <h2>${esc(c.name)}</h2>
+  ${photos}
+  ${c.slab ? `<div class="tile"><span class="eyebrow">${esc(c.slab.service || 'Slab')} slab detected</span><b>${esc(c.slab.grade || 'Grade not read')}</b>${c.slab.cert ? `<span class="small muted num">Cert # ${esc(c.slab.cert)}</span>` : ''}
+    ${c.slab.service && /pcgs/i.test(c.slab.service) ? `<a class="small" href="https://www.pcgs.com/cert/${encodeURIComponent(c.slab.cert || '')}" target="_blank" rel="noopener" style="color:var(--accent)">Verify on PCGS</a>` : c.slab.service && /ngc/i.test(c.slab.service) ? `<a class="small" href="https://www.ngccoin.com/certlookup/" target="_blank" rel="noopener" style="color:var(--accent)">Verify on NGC</a>` : ''}</div>` : ''}
+  ${c.uncertain.length ? `<p class="small"><span class="flag">Check:</span> ${c.uncertain.map(esc).join(', ')}</p>` : ''}
+  ${c.photoFeedback ? `<p class="small muted">${esc(c.photoFeedback)}</p>` : ''}
+  <p class="small muted">Read by Claude from your photos. Numista N# and reference images appear once Numista is connected.</p>
+  <button class="btn-primary btn-wide" data-a="confirmMatch">Yes, this is it</button>
+  <button class="btn-ghost btn-wide" data-a="showCandidates">Not my coin</button>`;
+}
+
+screens.grade = () => {
+  const c = S.coin;
+  const sugg = c.suggestedGrades && c.suggestedGrades.length ? c.suggestedGrades : ['F', 'VF'];
+  return `
+  <div class="topbar"><button class="back" data-a="go" data-s="match">Back</button></div>
+  <p class="eyebrow">${esc(c.name)}</p>
+  <h2>What grade?</h2>
+  <p class="muted">Suggested from your photos: <b>${sugg[0]}${sugg.length > 1 ? '–' + sugg[sugg.length - 1] : ''}</b>. Tap the grade you see.</p>
+  ${c.gradeNote ? `<p class="small muted">${esc(c.gradeNote)}</p>` : ''}
+  <div class="chips">${GRADES.map((g) => `<button class="chip ${sugg.includes(g) ? 'sugg' : ''}" data-a="setGrade" data-g="${g}">${g}</button>`).join('')}</div>
+  ${c.gradeSensitive ? `<div class="banner">Grade changes this coin's value a lot. Confirm a grade to see a target buy.</div>` : ''}
+  <button class="btn-ghost btn-wide" data-a="useRange">Use suggested range for now</button>`;
+};
+
+function liquidityBlock(liq, title = 'Liquidity') {
+  return `
+  <div class="card">
+    <div class="row between"><span class="eyebrow">${title} · beta</span><span class="pill ${tone(liq.label)}">${liq.label} · ${liq.score}</span></div>
+    <div class="meter" role="img" aria-label="Liquidity ${liq.score} of 100"><i style="left:${liq.score}%"></i></div>
+    ${liq.factors ? `<details><summary>Why ${liq.label.toLowerCase()}?</summary><div class="stack">
+      ${liq.factors.map((f) => `<div class="factor"><span>${f.label}</span><span class="muted">${f.note}</span><div class="bar"><span style="width:${Math.round(f.value * 100)}%"></span></div></div>`).join('')}
+      <p class="small muted">Data confidence: ${liq.confidence}. Gets sharper as live sales data and your own sell-through history come in.</p>
+    </div></details>` : ''}
+  </div>`;
+}
+
+function feasBlock(a, coin) {
+  const f = a.feas;
+  if (!f) return '';
+  let body;
+  if (f.basis === 'sales') {
+    body = `<b>${f.hits} of ${f.total}</b> recent sales ${a.grades.length > 1 ? 'in this grade range' : coin.skipGrade ? '' : 'at this grade'} were ${money(f.requiredSell)} or more.`;
+  } else if (f.basis === 'cpg') {
+    body = `Not enough sales yet. Compared with CPG retail of ${money(f.cpg)}.`;
+  } else body = 'No sales or CPG data to check against.';
+  return `<div class="feas ${tone(f.status)}">
+    <div class="row between"><b>Your ${pct(a.margin)} margin</b><span class="pill ${tone(f.status)}">${f.status}</span></div>
+    <span class="small">To make ${pct(a.margin)} at ${money(a.effCost)}, you need to sell for <b>${money(f.requiredSell)}</b>. ${body}</span>
+    ${a.maxMargin != null ? `<span class="small">At a typical sale (${money(a.range.mid)}), this cost gives a <b>${pct(a.maxMargin)}</b> margin.</span>` : ''}
+  </div>`;
+}
+
+screens.money = () => {
+  const c = S.coin;
+  const a = analyze(c, S.grades, S.confirmed, S.cost, null, S.expSale);
+  const gradeTxt = gradeLabel(c, a.grades);
+  return `
+  <div class="topbar"><button class="back" data-a="go" data-s="${c.skipGrade ? 'match' : 'grade'}">Back</button>
+    ${c.skipGrade ? '<span class="pill neutral">Bullion pricing</span>' : `<button class="btn-link" data-a="go" data-s="grade">${a.confirmed ? `${gradeTxt} · Change` : `${gradeTxt} suggested · Confirm`}</button>`}</div>
+  ${S.added ? `<div class="toast">Added to Purchase #${S.purchase.no} · ${S.purchase.items.length} coin${S.purchase.items.length === 1 ? '' : 's'}</div>` : ''}
+  <h2>${esc(c.name)}</h2>
+  ${a.isAI && (!a.range || a.range.source === 'ai') ? `<div class="banner">Value below is ${a.range ? 'Claude\'s rough estimate, not market data' : 'missing'}. Enter your expected sale price for real numbers. Greysheet and Numista sales replace this once connected.</div>` : ''}
+
+  <div class="card">
+    <span class="eyebrow">Estimated market</span>
+    <span class="big">${a.range ? range$(a.range) : 'Not enough data'}</span>
+    <span class="small muted">${a.range ? `Based on ${esc(a.range.basis)}${!a.confirmed ? ' · narrows when you confirm the grade' : ''}` : (a.isAI ? 'Enter your expected sale price below.' : 'No sales or CPG found for this coin yet.')}</span>
+  </div>
+
+  <div class="card">
+    <span class="eyebrow">Your target buy</span>
+    ${a.hideTarget
+      ? `<span class="mid">Confirm grade</span><button class="btn-ghost" data-a="go" data-s="grade">Pick the grade</button>`
+      : `<span class="big">${money(a.targetBuy)}</span>
+         <span class="small muted">${pct(a.margin)} target margin${a.confirmed ? '' : ', from the low end until grade is confirmed'} · <button class="btn-link small" data-a="go" data-s="settings" style="padding:0">Change</button></span>`}
+  </div>
+
+  <div class="grid3">
+    <div class="tile"><span class="eyebrow">Melt</span><b class="num">${money(a.melt)}</b></div>
+    ${a.isAI
+      ? `<div class="tile"><span class="eyebrow">CPG</span><span class="small muted">Connects with Greysheet</span></div>`
+      : `<div class="tile"><span class="eyebrow">CPG</span><b class="num">${a.cpg.length ? a.cpg.map(money).join('–') : '—'}</b>
+      <a class="small" href="https://www.greysheet.com" target="_blank" rel="noopener" style="color:var(--accent)">via CDN</a></div>`}
+    <button class="tile" data-a="go" data-s="sales" style="border:0;min-height:0;font-weight:400;color:var(--ink);text-align:left;justify-content:flex-start;align-items:stretch"><span class="eyebrow">Sales ›</span><b class="num">${a.isAI ? '<span class="small">eBay · PCGS</span>' : salesRange(c, a.grades)}</b></button>
+  </div>
+
+  <div class="card" id="calc">${calcInner(c, a)}</div>
+
+  ${a.liq ? liquidityBlock(a.liq) : `<div class="card"><div class="row between"><span class="eyebrow">Liquidity · beta</span><span class="pill neutral">Needs sales data</span></div><p class="small muted">Turns on when Numista sales records are connected. Try a sample coin to see it working.</p></div>`}
+
+  <button id="addBtn" class="btn-primary btn-wide" data-a="addToPurchase" ${a.hideTarget && !a.cost ? 'disabled' : ''}>Add to purchase</button>
+  <button class="btn-ghost btn-wide" data-a="scan">Scan next coin</button>
+  <div class="row between">
+    <button class="btn-link" data-a="go" data-s="details">Coin details ›</button>
+    <span class="small muted">${S.feedback ? 'Thanks, noted.' : `Correct ID? <button class="btn-link small" data-a="fb" data-v="yes">Yes</button> · <button class="btn-link small" data-a="fb" data-v="no">No</button>`}</span>
+  </div>`;
+};
+
+function salesRange(coin, grades) {
+  const p = coin.sales.filter((s) => grades.includes(s.grade)).map((s) => s.price);
+  if (!p.length) return 'None';
+  const lo = Math.min(...p), hi = Math.max(...p);
+  return lo === hi ? money(lo) : `${money(lo)}–${money(hi)}`;
+}
+
+function calcInner(c, a) {
+  return `
+    ${a.isAI ? `<label class="field" for="expsale">What do you expect to sell it for?
+      <input id="expsale" type="number" inputmode="decimal" min="0" step="0.01" placeholder="${a.range && a.range.source === 'ai' ? 'Claude estimate ~' + money(a.range.mid) : 'Expected sale'}" value="${esc(S.expSale)}"></label>` : ''}
+    <label class="field" for="cost">What would you pay?
+      <input id="cost" type="number" inputmode="decimal" min="0" step="0.01" placeholder="${a.targetBuy ? 'Target buy ' + money(a.targetBuy) : 'Your cost'}" value="${esc(S.cost)}"></label>
+    ${a.effCost && a.range ? `<div class="grid2">
+      <div class="tile"><span class="eyebrow">Expected profit</span><b class="num">${money(a.profitLow) === money(a.profitHigh) ? money(a.profitLow) : `${money(a.profitLow)}–${money(a.profitHigh)}`}</b></div>
+      <div class="tile"><span class="eyebrow">Margin at typical sale</span><b class="num">${pct(a.maxMargin)}</b></div>
+    </div>` : ''}
+    ${feasBlock(a, c)}
+    ${!a.cost && a.effCost ? '<span class="small muted">Showing numbers at your target buy. Enter a cost to test a real offer.</span>' : ''}`;
+}
+
+screens.sales = () => {
+  const c = S.coin;
+  const a = analyze(c, S.grades, S.confirmed, S.cost, null, S.expSale);
+  const q = encodeURIComponent(c.name.replace(/\(.*\)/, '').trim());
+  return `
+  <div class="topbar"><button class="back" data-a="go" data-s="money">Back</button></div>
+  <h2>Recent sales</h2>
+  ${a.isAI ? `<div class="card"><p>Sales records for ${esc(c.name)} appear here once Numista is connected. Check sold prices now:</p></div>` : `
+  <p class="small muted">${esc(c.name)} · highlighted rows match ${esc(gradeLabel(c, a.grades))}</p>
+  <div class="card"><div class="tablewrap"><table>
+    <thead><tr><th>Date</th><th>Grade</th><th class="r">Price</th></tr></thead>
+    <tbody>${c.sales.map((s) => `<tr class="${a.grades.includes(s.grade) ? 'hl' : ''}"><td class="num">${s.date}</td><td>${s.grade === 'ANY' ? '—' : s.grade}</td><td class="r num">${money(s.price)}</td></tr>`).join('')}</tbody>
+  </table></div>
+  <p class="small muted">Sample sales. Live version: Numista sales records.</p></div>`}
+  <a class="btn btn-ghost btn-wide" href="https://www.ebay.com/sch/i.html?_nkw=${q}&LH_Sold=1&LH_Complete=1" target="_blank" rel="noopener">Search eBay sold</a>
+  <a class="btn btn-ghost btn-wide" href="https://www.pcgs.com/auctionprices" target="_blank" rel="noopener">PCGS auction results</a>`;
+};
+
+screens.details = () => {
+  const c = S.coin;
+  const rows = [['Country', c.country], ['Denomination', c.denomination], ['Year', c.year], ['Mint', c.mint],
+    ['Composition', c.composition], ['Fineness', c.fineness], ['Weight', c.weight],
+    [c.agw ? 'AGW' : 'ASW', (c.agw || c.asw) ? (c.agw || c.asw) + ' oz' : ''], ['Mintage', c.mintage], ['Diameter', c.diameter],
+    ['Catalog', c.km], ['Numista', c.numista]].filter(([, v]) => v != null && v !== '');
+  return `
+  <div class="topbar"><button class="back" data-a="go" data-s="money">Back</button></div>
+  <h2>${esc(c.name)}</h2>
+  <div class="card"><table><tbody>${rows.map(([k, v]) => `<tr><th>${k}</th><td class="num">${esc(v)}</td></tr>`).join('')}</tbody></table>
+  <p class="small muted">${c.source === 'ai' ? 'Specs read by Claude from memory. Verify before relying on them; Numista supplies verified specs once connected.' : 'Specs: Numista (sample values in this prototype).'}</p></div>`;
+};
+
+screens.purchase = () => {
+  const P = S.purchase;
+  if (!P.items.length) return `
+    <div class="topbar"><button class="back" data-a="go" data-s="home">Home</button></div>
+    <h2>Purchase #${P.no}</h2>
+    <div class="card"><p>No coins yet. Scan a coin and tap <b>Add to purchase</b>; the offer builds as you go.</p></div>
+    <button class="btn-primary btn-wide" data-a="scan">Scan a coin</button>`;
+  const T = lotTotals();
+  const lm = T.margin;
+  return `
+  <div class="topbar"><button class="back" data-a="go" data-s="home">Home</button><span class="small muted">${T.count} coin${T.count === 1 ? '' : 's'}</span></div>
+  <h2>Purchase #${P.no}</h2>
+
+  <div class="card">
+    <div class="grid2">
+      <div><span class="eyebrow">Estimated market</span><div class="mid" style="font-size:1.35rem">${money(T.low)}–${money(T.high)}</div></div>
+      <div><span class="eyebrow">Total melt</span><div class="mid" style="font-size:1.35rem">${money(T.meltTotal)}</div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="row between"><span class="eyebrow">Target margin for this lot</span><b class="num" id="lmv">${pct(lm)}</b></div>
+    <input class="slider" id="lm" type="range" min="0" max="0.6" step="0.01" value="${lm}" aria-label="Target margin for this lot">
+    <div class="row between"><span>Max offer at ${pct(lm)}</span><b class="num">${money(T.maxOffer)}</b></div>
+  </div>
+
+  <div class="card" id="lotcalc">${lotCalcInner(T)}</div>
+
+  ${T.liquidity != null ? liquidityBlock({ score: T.liquidity, label: T.liquidity >= 70 ? 'Fast' : T.liquidity >= 45 ? 'Moderate' : 'Slow' }, 'Lot liquidity') : ''}
+
+  <div class="card">
+    <span class="eyebrow">Coins · tap a cost to edit</span>
+    ${T.allocated.map((it, i) => `
+      <div class="coinrow">
+        ${it.thumb ? `<img src="${it.thumb}" alt="">` : '<span class="ph"></span>'}
+        <div style="min-width:0">
+          <div style="font-weight:600">${esc(it.coin.name)}</div>
+          <div class="small muted">${esc(it.gradeTxt)} · sells ~${money(it.mid)} · ${tone(it.liqLabel) === 'neutral' ? '' : `<span class="dot" style="background:var(--${tone(it.liqLabel) === 'good' ? 'good' : tone(it.liqLabel) === 'warn' ? 'warn' : 'bad'})"></span> `}${it.liqLabel}</div>
+          <div class="small">${it.mid ? `Profit ${money(it.mid - it.allocCost)} · margin ${pct((it.mid - it.allocCost) / it.mid)}` : 'No value yet'} <button class="btn-link small" data-a="removeItem" data-i="${i}" style="padding:0 0 0 6px">Remove</button></div>
+        </div>
+        <input class="costin num" type="number" inputmode="decimal" data-cost="${i}" value="${it.cost}" aria-label="Cost for ${esc(it.coin.name)}" ${P.lotOffer ? 'disabled title="Set by lot offer"' : ''}>
+      </div>`).join('')}
+    ${P.lotOffer ? '<p class="small muted">Per-coin costs are split from your lot offer by expected sale value.</p>' : ''}
+  </div>
+
+  <button class="btn-primary btn-wide" data-a="scan">Add more coins</button>
+  ${S.confirmClear
+    ? `<div class="confirmbox"><b>Start a new purchase?</b><span class="small">This clears the ${T.count} coins in Purchase #${P.no}.</span>
+       <div class="grid2"><button class="btn-ghost" data-a="cancelClear">Keep</button><button class="btn-primary" data-a="doClear" style="background:var(--bad);color:#fff">Clear</button></div></div>`
+    : `<button class="btn-ghost btn-wide" data-a="askClear">Start new purchase</button>`}`;
+};
+
+function lotTotals() {
+  const P = S.purchase;
+  const rows = P.items.map((it) => {
+    const coin = it.coin || coinById(it.coinId);
+    const a = analyze(coin, it.grades, it.confirmed, '', null, it.expSale);
+    return { ...it, coin, a };
+  });
+  const defMargin = (() => {
+    const tot = rows.reduce((s, r) => s + (r.a.range ? r.a.range.mid : 0), 0);
+    if (!tot) return S.settings.marginNumis;
+    return Math.round(rows.reduce((s, r) => s + marginFor(r.coin) * (r.a.range ? r.a.range.mid : 0), 0) / tot * 100) / 100;
+  })();
+  const margin = P.lotMargin ?? defMargin;
+  const items = rows.map((r) => ({
+    cost: r.cost, low: r.a.range ? r.a.range.low : 0, high: r.a.range ? r.a.range.high : 0,
+    mid: r.a.range ? r.a.range.mid : 0, melt: r.a.melt, liquidity: r.a.liq ? r.a.liq.score : null, targetBase: r.a.targetBase,
+    coin: r.coin, thumb: r.thumb, gradeTxt: gradeLabel(r.coin, r.a.grades) + (r.coin.skipGrade || r.confirmed ? '' : ' (suggested)'),
+    liqLabel: r.a.liq ? r.a.liq.label : 'No sales data',
+  }));
+  const T = purchaseTotals(items, margin, parseFloat(P.lotOffer) || 0);
+  return { ...T, margin };
+}
+
+function lotCalcInner(T) {
+  const P = S.purchase;
+  return `
+    <label class="field" for="lot">Your offer for the whole lot
+      <input id="lot" type="number" inputmode="decimal" min="0" placeholder="Sum of coin costs: ${money(T.costEntered)}" value="${esc(P.lotOffer)}"></label>
+    <div class="grid2">
+      <div class="tile"><span class="eyebrow">Total cost</span><b class="num">${money(T.cost)}</b></div>
+      <div class="tile"><span class="eyebrow">Expected profit</span><b class="num">${money(T.profitLow)}–${money(T.profitHigh)}</b></div>
+      <div class="tile"><span class="eyebrow">Margin at typical sale</span><b class="num">${pct(T.marginMid)}</b></div>
+      <div class="tile"><span class="eyebrow">Melt cushion</span><b class="num">${T.cost ? pct(T.meltTotal / T.cost) : '—'}</b><span class="small muted">of cost</span></div>
+    </div>
+    <div class="feas ${tone(T.status)}">
+      <div class="row between"><b>Your ${pct(T.margin)} target</b><span class="pill ${tone(T.status)}">${T.status}</span></div>
+      <span class="small">To make ${pct(T.margin)} on ${money(T.cost)}, the lot needs to sell for <b>${money(T.requiredSell)}</b>. Estimated market is ${money(T.low)}–${money(T.high)}.</span>
+    </div>`;
+}
+
+screens.settings = () => `
+  <div class="topbar"><button class="back" data-a="back">Back</button></div>
+  <h2>Margins &amp; spot</h2>
+  <div class="card">
+    <label class="field" for="mn">Numismatic coins target margin (%)<input id="mn" type="number" inputmode="decimal" value="${Math.round(S.settings.marginNumis * 100)}"></label>
+    <label class="field" for="mb">Bullion &amp; junk silver target margin (%)<input id="mb" type="number" inputmode="decimal" value="${Math.round(S.settings.marginBullion * 100)}"></label>
+    <p class="small muted">Margin means profit as a share of the sale price. 25% on a $100 sale is $25 profit, so the buy is $75.</p>
+  </div>
+  <div class="card">
+    <span class="eyebrow">Spot (sample, editable for testing)</span>
+    <div class="grid2">
+      <label class="field" for="ss">Silver $/oz<input id="ss" type="number" inputmode="decimal" value="${spot().silver}"></label>
+      <label class="field" for="sg">Gold $/oz<input id="sg" type="number" inputmode="decimal" value="${spot().gold}"></label>
+    </div>
+    <p class="small muted">Live version pulls spot from metals.dev every few minutes.</p>
+  </div>
+  <button class="btn-primary btn-wide" data-a="saveSettings">Save</button>`;
+
+/* ---------- render ---------- */
+let prevScreen = 'home';
+function render() {
+  document.getElementById('app').innerHTML = screens[S.screen]();
+  const bar = document.getElementById('pbar');
+  const n = S.purchase.items.length;
+  const showBar = n && !['purchase', 'capture', 'identifying', 'settings'].includes(S.screen);
+  bar.hidden = !showBar;
+  if (showBar) {
+    const T = lotTotals();
+    bar.innerHTML = `<button data-a="go" data-s="purchase"><span>Purchase #${S.purchase.no} · ${n} coin${n === 1 ? '' : 's'}</span><span class="num">${money(T.cost)} · +${money(T.profitMid)} ›</span></button>`;
+  }
+  window.scrollTo(0, 0);
+}
+function go(s) { if (s === 'settings') prevScreen = S.screen; S.screen = s; render(); }
+
+/* ---------- photos ---------- */
+function shrink(file, max, cb) {
+  const r = new FileReader();
+  r.onload = () => {
+    const img = new Image();
+    img.onload = () => {
+      const k = Math.min(1, max / Math.max(img.width, img.height));
+      const cv = document.createElement('canvas');
+      cv.width = Math.round(img.width * k); cv.height = Math.round(img.height * k);
+      cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+      cb(cv.toDataURL('image/jpeg', 0.82));
+    };
+    img.onerror = () => cb(null);
+    img.src = r.result;
+  };
+  r.readAsDataURL(file);
+}
+/* ---------- identification (Claude reads the photos) ---------- */
+const SERVER_MODE = true;
+const samplePromise = !SERVER_MODE && window.claude && window.claude.use ? window.claude.use('sample').catch(() => null) : Promise.resolve(null);
+
+// Standalone app: photos go to our own server function, which holds the API key.
+function blobToBase64(b) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result).split(',')[1]);
+    r.onerror = reject;
+    r.readAsDataURL(b);
+  });
+}
+async function serverJson(hints, images, signal) {
+  const payload = { hints: hints || '', images: await Promise.all(images.map(blobToBase64)) };
+  const res = await fetch('/api/identify', {
+    method: 'POST', signal,
+    headers: { 'Content-Type': 'application/json', 'X-Access-Code': store.get('cs.code', '') },
+    body: JSON.stringify(payload),
+  }).catch((e) => { throw { code: e && e.name === 'AbortError' ? 'cancelled' : 'network' }; });
+  if (res.status === 401) throw { code: 'need_code' };
+  if (res.status === 413) throw { code: 'image_rejected' };
+  if (res.status === 429) throw { code: 'rate_limited' };
+  const data = await res.json().catch(() => null);
+  if (!res.ok || !data) throw { code: (data && data.error) || 'upstream_error' };
+  return data;
+}
+let idCtl = null, idTimer = null;
+
+const ID_PROMPT = (hints) => `You are an expert numismatist helping a coin dealer identify a coin at a coin show.
+${S.files.rev ? 'Image 1 is the obverse (front); image 2 is the reverse (back).' : S.files.obv ? 'The image shows one side of the coin.' : 'No photos: identify from the dealer\'s details only.'}
+The coin may be raw or in a PCGS, NGC, ANACS or other slab. If slabbed, read the label: service, grade, cert number, label text.
+
+Read every legend, the date and the mint mark carefully. Check where the mint mark sits for this series (for example, Morgan dollars: reverse, below the wreath). Never invent a mint mark you cannot see. If no mint mark is visible where the series would show one, use "None". If you cannot read something, list it in uncertain_fields and lower your confidence. Prefer an honest "Low" over a confident wrong answer.
+${hints ? '\nThe dealer has corrected or supplied these details; treat them as correct unless the photos clearly contradict them:\n' + hints + '\n' : ''}
+Reply with only this JSON object:
+{
+ "identified": true,
+ "coin_name": "e.g. 1921-S Morgan Dollar",
+ "country": "", "denomination": "", "year": "",
+ "mint_mark": "letter, or \"None\", or \"\" if unreadable",
+ "mint_name": "e.g. San Francisco",
+ "km_number": "Krause KM# if known, else \"\"",
+ "composition": "", "fineness": "e.g. .900", "weight_g": null, "asw_oz": null, "agw_oz": null, "diameter_mm": null, "mintage": "",
+ "is_bullion_like": false,
+ "grade_sensitive": false,
+ "slab": null,
+ "suggested_grades": ["VF", "XF"],
+ "grade_note": "one short sentence on visible wear",
+ "uncertain_fields": ["mint_mark"],
+ "confidence": "High",
+ "candidates": [{"coin_name": "", "why": ""}],
+ "rough_value_usd": {"VF": [60, 80]},
+ "photo_feedback": ""
+}
+Rules:
+- identified: false if you cannot tell what the coin is.
+- uncertain_fields uses only: country, denomination, year, mint_mark.
+- is_bullion_like: true when value is mostly metal (90% US silver in circulated grades, modern bullion, gold bullion coins). Then suggested_grades is [] and rough_value_usd uses the key "ANY".
+- grade_sensitive: true when one grade step changes value a lot (key dates, mint-state Morgans, high-grade type coins).
+- slab: null, or {"service": "PCGS", "grade": "MS63", "cert": "", "label_text": ""}.
+- suggested_grades: one or two adjacent grades from VG, F, VF, XF, AU, UNC.
+- candidates: 2 to 4 OTHER likely coins, including close dates, mint marks and varieties, each with a short reason.
+- rough_value_usd: approximate typical US retail ranges for the grades in question, from general knowledge, only where you have a reasonable sense; otherwise {}. These are shown to the dealer labeled as rough estimates.
+- weights in grams, ASW/AGW in troy ounces.
+- photo_feedback: one short tip if the photos limited you (glare, blur, too small), else "".`;
+
+function hintsFromFields() {
+  if (!S.fields) return '';
+  const f = S.fields, parts = [];
+  if (f.country) parts.push('Country: ' + f.country);
+  if (f.denomination) parts.push('Denomination: ' + f.denomination);
+  if (f.year) parts.push('Year: ' + f.year);
+  if (f.mint) parts.push('Mint mark: ' + f.mint);
+  return parts.join('\n');
+}
+
+const GRADE_MAP = (g) => {
+  const x = String(g || '').toUpperCase();
+  if (/^(MS|PR|PF|SP|UNC|BU)/.test(x)) return 'UNC';
+  if (/^AU/.test(x)) return 'AU';
+  if (/^(XF|EF)/.test(x)) return 'XF';
+  if (/^VF/.test(x)) return 'VF';
+  if (/^F/.test(x)) return 'F';
+  if (/^(VG|G|AG|FR|P)/.test(x)) return 'VG';
+  return null;
+};
+
+function coinFromAI(r) {
+  const fieldName = { mint_mark: 'mint', year: 'year', country: 'country', denomination: 'denomination' };
+  const num = (v) => (typeof v === 'number' && isFinite(v) && v > 0) ? v : null;
+  const sugg = Array.isArray(r.suggested_grades) ? r.suggested_grades.filter((g) => GRADES.includes(g)) : [];
+  const mint = r.mint_mark === 'None' ? 'None' + (r.mint_name ? ` (${r.mint_name})` : '') : [r.mint_mark, r.mint_name ? `(${r.mint_name})` : ''].filter(Boolean).join(' ');
+  return {
+    id: 'ai-' + Date.now(), source: 'ai',
+    name: r.coin_name || [r.year, r.country, r.denomination].filter(Boolean).join(' ') || 'Unknown coin',
+    country: r.country || '', denomination: r.denomination || '', year: r.year || '', mint,
+    composition: r.composition || '', fineness: r.fineness || '',
+    weight: num(r.weight_g) ? r.weight_g + ' g' : '', diameter: num(r.diameter_mm) ? r.diameter_mm + ' mm' : '',
+    asw: num(r.asw_oz), agw: num(r.agw_oz), mintage: r.mintage || '', km: r.km_number || '',
+    numista: 'Matched once Numista is connected',
+    category: r.is_bullion_like ? 'Bullion-type' : 'Numismatic',
+    uncertain: (r.uncertain_fields || []).map((f) => fieldName[f]).filter(Boolean),
+    suggestedGrades: sugg, gradeSensitive: !!r.grade_sensitive, skipGrade: !!r.is_bullion_like,
+    cpg: {}, sales: [],
+    alternates: (r.candidates || []).filter((x) => x && x.coin_name).slice(0, 4),
+    aiValue: r.rough_value_usd && typeof r.rough_value_usd === 'object' ? r.rough_value_usd : {},
+    slab: r.slab && (r.slab.service || r.slab.grade) ? r.slab : null,
+    gradeNote: r.grade_note || '', confidence: ['High', 'Medium', 'Low'].includes(r.confidence) ? r.confidence : 'Medium',
+    photoFeedback: r.photo_feedback || '',
+  };
+}
+
+const ID_ERRORS = {
+  not_granted: 'Claude isn\'t allowed for this page yet. Allow it when asked, or check the page\'s permissions.',
+  sampling_disabled: 'Claude isn\'t available for this account.',
+  rate_limited: 'Too many scans at once, or your Claude usage limit was reached. Wait a moment and try again.',
+  image_rejected: 'That photo couldn\'t be read. Try a JPEG or PNG photo.',
+  refused: 'Claude declined these photos. Try different photos.',
+  invalid_json: 'The answer came back garbled. Try again.',
+  session_expired: 'Your Claude session expired. Sign in again.',
+  network: 'No connection to the server. Check your signal and try again.',
+  not_configured: 'The app\'s API key isn\'t set up yet. Add ANTHROPIC_API_KEY in Vercel settings and redeploy.',
+};
+
+async function runIdentify(hints, opts = {}) {
+  if (SERVER_MODE && !store.get('cs.code', '')) { S.pending = { hints, opts }; return go('code'); }
+  const sample = SERVER_MODE ? null : await samplePromise;
+  if (!SERVER_MODE && !sample) { S.idUnavailable = true; return go('pick'); }
+  const caps = SERVER_MODE ? { images: { maxCount: 2 } } : await sample.limits().catch(() => null);
+  const taken = [S.files.obv, S.files.rev].filter(Boolean);
+  if (taken.length && !opts.textOnly && !(caps && caps.images)) {
+    S.idError = 'This view of Claude can\'t send photos yet. Open this page at claude.ai in Safari or on a computer and scan again. You can also enter the details you can read and search.';
+    S.ai = null;
+    return go('idfail');
+  }
+  const images = !opts.textOnly ? taken.slice(0, caps.images.maxCount) : [];
+  if (taken.length && !opts.textOnly && !images.length) {
+    S.idError = 'The photos couldn\'t be prepared. Try taking them again.';
+    return go('idfail');
+  }
+  idCtl = new AbortController();
+  const t0 = Date.now();
+  S.screen = 'identifying'; render();
+  clearInterval(idTimer);
+  idTimer = setInterval(() => { const el = document.getElementById('elapsed'); if (el) el.textContent = Math.round((Date.now() - t0) / 1000); }, 1000);
+  try {
+    const r = SERVER_MODE
+      ? await serverJson(hints, images, idCtl.signal)
+      : await sample.json(ID_PROMPT(hints), { images: images.length ? images : undefined, signal: idCtl.signal, modelTier: 'default', cache: false });
+    S.idSeconds = Math.round((Date.now() - t0) / 1000);
+    S.ai = r;
+    if (!r || r.identified === false || !r.coin_name) {
+      S.idError = 'Claude couldn\'t tell what this coin is from these photos.';
+      return go('idfail');
+    }
+    S.coin = coinFromAI(r);
+    S.fields = { country: S.coin.country, denomination: S.coin.denomination, year: S.coin.year, mint: S.coin.mint };
+    S.expSale = ''; S.cost = ''; S.candidates = false; S.manual = false;
+    S.log.push({ at: new Date().toISOString(), hints: hints || '', result: r.coin_name, confidence: r.confidence, seconds: S.idSeconds });
+    go(opts.next || 'fields');
+  } catch (e) {
+    if (e && e.code === 'cancelled') return go('capture');
+    if (e && e.code === 'need_code') { store.set('cs.code', ''); S.codeWrong = true; S.pending = { hints, opts }; return go('code'); }
+    if (e && e.code === 'images_unavailable') { S.idError = 'This view of Claude can\'t send photos yet. Open this page at claude.ai in Safari or on a computer and scan again.'; S.ai = null; return go('idfail'); }
+    S.idError = ID_ERRORS[e && e.code] || 'Something went wrong reaching Claude. Try again.';
+    go('idfail');
+  } finally {
+    clearInterval(idTimer);
+  }
+}
+function startIdentify() { runIdentify(''); }
+function waitForFiles() {
+  return new Promise((resolve) => {
+    let n = 0;
+    const tick = () => (S.files.obv !== null && S.files.rev !== null) || n++ > 40 ? resolve() : setTimeout(tick, 100);
+    setTimeout(tick, 300);
+  });
+}
+
+// Re-encode any camera photo (HEIC, huge JPEG, etc.) as a standard JPEG Blob.
+function toJpegBlob(file, max) {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const k = Math.min(1, max / Math.max(img.width, img.height));
+      const cv = document.createElement('canvas');
+      cv.width = Math.round(img.width * k); cv.height = Math.round(img.height * k);
+      cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+      URL.revokeObjectURL(url);
+      cv.toBlob((b) => resolve(b), 'image/jpeg', 0.9);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
+    img.src = url;
+  });
+}
+
+/* ---------- events ---------- */
+document.addEventListener('click', (e) => {
+  const t = e.target.closest('[data-a]');
+  if (!t || t.disabled) return;
+  const a = t.dataset.a;
+  if (a === 'go') return go(t.dataset.s);
+  if (a === 'back') return go(prevScreen);
+  if (a === 'scan') { Object.assign(S, { photos: {}, files: {}, coin: null, fields: null, ai: null, cost: '', expSale: '', added: false, candidates: false, feedback: null, confirmClear: false, manual: false, idUnavailable: false }); return go('capture'); }
+  if (a === 'demo') { Object.assign(S, { photos: {}, files: {}, coin: null, cost: '', expSale: '', added: false, candidates: false, feedback: null, idUnavailable: false }); return go('pick'); }
+  if (a === 'saveCode') {
+    const v = document.getElementById('code').value.trim();
+    if (!v) return;
+    store.set('cs.code', v); S.codeWrong = false;
+    const p = S.pending || { hints: '', opts: {} }; S.pending = null;
+    return runIdentify(p.hints, p.opts);
+  }
+  if (a === 'frontOnly') return waitForFiles().then(startIdentify);
+  if (a === 'stopId') { if (idCtl) idCtl.abort(); return; }
+  if (a === 'researchId') return runIdentify(hintsFromFields(), { textOnly: !S.files.obv });
+  if (a === 'pickCandidate') {
+    const cand = S.coin.alternates[+t.dataset.i];
+    return runIdentify(`The dealer says this coin is: ${cand.coin_name}. Re-check the photos against that and fill in its details.`, { next: 'match', textOnly: !S.files.obv });
+  }
+  if (a === 'manual') {
+    S.manual = true;
+    S.coin = { source: 'ai', uncertain: [], alternates: [] };
+    S.fields = S.fields || { country: '', denomination: '', year: '', mint: '' };
+    return go('fields');
+  }
+  if (a === 'pickCoin') {
+    S.coin = coinById(t.dataset.id);
+    S.fields = { country: S.coin.country, denomination: S.coin.denomination, year: S.coin.year, mint: S.coin.mint };
+    return go('fields');
+  }
+  if (a === 'toMatch') {
+    S.candidates = false;
+    if (S.manual || !S.coin || !S.coin.name) return runIdentify(hintsFromFields(), { next: 'match', textOnly: !S.files.obv });
+    const c = S.coin;
+    const edited = c.source === 'ai' && ['country', 'denomination', 'year', 'mint'].some((k) => (S.fields[k] || '') !== (c[k] || ''));
+    if (edited) return runIdentify(hintsFromFields(), { next: 'match' });
+    return go('match');
+  }
+  if (a === 'showCandidates') { S.candidates = true; return render(); }
+  if (a === 'hideCandidates') { S.candidates = false; return render(); }
+  if (a === 'confirmMatch') {
+    S.candidates = false;
+    if (S.coin.skipGrade) { S.grades = ['ANY']; S.confirmed = true; return go('money'); }
+    const slabGrade = S.coin.slab && GRADE_MAP(S.coin.slab.grade);
+    if (slabGrade) { S.grades = [slabGrade]; S.confirmed = true; return go('money'); }
+    return go('grade');
+  }
+  if (a === 'setGrade') { S.grades = [t.dataset.g]; S.confirmed = true; return go('money'); }
+  if (a === 'useRange') { S.grades = S.coin.suggestedGrades && S.coin.suggestedGrades.length ? [...S.coin.suggestedGrades] : ['F', 'VF']; S.confirmed = false; return go('money'); }
+  if (a === 'fb') { S.feedback = t.dataset.v; if (S.log.length) S.log[S.log.length - 1].correct = t.dataset.v; if (t.dataset.v === 'no') return go('fields'); return render(); }
+  if (a === 'addToPurchase') {
+    const an = analyze(S.coin, S.grades, S.confirmed, S.cost, null, S.expSale);
+    const cost = an.cost ?? an.targetBuy ?? 0;
+    const item = { coinId: S.coin.id, grades: [...S.grades], confirmed: S.confirmed, cost: Math.round(cost * 100) / 100, thumb: S.photos.thumb || null };
+    if (S.coin.source === 'ai') { item.coin = S.coin; item.expSale = S.expSale; }
+    S.purchase.items.push(item);
+    S.added = true; save(); return render();
+  }
+  if (a === 'removeItem') { S.purchase.items.splice(+t.dataset.i, 1); save(); return render(); }
+  if (a === 'askClear') { S.confirmClear = true; return render(); }
+  if (a === 'cancelClear') { S.confirmClear = false; return render(); }
+  if (a === 'doClear') { S.purchase = { no: S.purchase.no + 1, items: [], lotOffer: '', lotMargin: null }; S.confirmClear = false; save(); return go('home'); }
+  if (a === 'saveSettings') {
+    const v = (id) => parseFloat(document.getElementById(id).value);
+    if (v('mn') >= 0 && v('mn') < 100) S.settings.marginNumis = v('mn') / 100;
+    if (v('mb') >= 0 && v('mb') < 100) S.settings.marginBullion = v('mb') / 100;
+    if (v('ss') > 0) S.settings.spot.silver = v('ss');
+    if (v('sg') > 0) S.settings.spot.gold = v('sg');
+    S.settings.spot.asOf = 'Sample spot, edited';
+    save(); return go(prevScreen);
+  }
+});
+
+document.addEventListener('input', (e) => {
+  const el = e.target;
+  if (el.dataset.field) { S.fields[el.dataset.field] = el.value; return; }
+  if (el.id === 'cost') {
+    S.cost = el.value;
+    const a = analyze(S.coin, S.grades, S.confirmed, S.cost, null, S.expSale);
+    const calc = document.getElementById('calc');
+    const pos = el.selectionStart;
+    calc.innerHTML = calcInner(S.coin, a);
+    const ab = document.getElementById('addBtn'); if (ab) ab.disabled = a.hideTarget && !a.cost;
+    const ni = document.getElementById('cost'); ni.focus(); try { ni.setSelectionRange(pos, pos); } catch (_) {}
+    return;
+  }
+  if (el.id === 'expsale') {
+    S.expSale = el.value;
+    return;
+  }
+  if (el.id === 'lot') {
+    S.purchase.lotOffer = el.value; save();
+    const box = document.getElementById('lotcalc');
+    box.innerHTML = lotCalcInner(lotTotals());
+    const ni = document.getElementById('lot'); ni.focus();
+    return;
+  }
+  if (el.id === 'lm') {
+    S.purchase.lotMargin = parseFloat(el.value); save();
+    document.getElementById('lmv').textContent = pct(S.purchase.lotMargin);
+    return;
+  }
+});
+
+document.addEventListener('change', (e) => {
+  const el = e.target;
+  if ((el.id === 'cam' || el.id === 'lib') && el.files && el.files[0]) {
+    const side = S.photos.obv ? 'rev' : 'obv';
+    const file = el.files[0];
+    S.files[side] = null;
+    toJpegBlob(file, 1600).then((b) => { S.files[side] = b; });
+    shrink(file, 900, (url) => {
+      if (!url) return;
+      S.photos[side] = url;
+      if (side === 'obv') shrink(file, 96, (th) => { S.photos.thumb = th; });
+      render();
+      if (side === 'rev') waitForFiles().then(startIdentify);
+    });
+  }
+  if (el.dataset.cost != null) {
+    const i = +el.dataset.cost, v = parseFloat(el.value);
+    if (v >= 0) { S.purchase.items[i].cost = v; save(); render(); }
+  }
+  if (el.id === 'lm') render();
+  if (el.id === 'expsale') render();
+});
+
+render();
+</script>
+
+</body>
+</html>

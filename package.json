@@ -1,0 +1,6 @@
+{
+  "name": "coin-scanner",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=20" }
+}
