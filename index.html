@@ -856,7 +856,7 @@ screens.money = () => {
     <button class="tile" data-a="go" data-s="sales" style="border:0;min-height:0;font-weight:400;color:var(--ink);text-align:left;justify-content:flex-start;align-items:stretch"><span class="eyebrow">Sales ›</span><b class="num">${a.isAI ? '<span class="small">eBay · PCGS</span>' : salesRange(c, a.grades)}</b></button>
   </div>
 
-  <button id="addBtn" class="btn-primary btn-wide" data-a="addToPurchase" ${(a.hideTarget || a.targetBuy == null) && !a.cost ? 'disabled' : ''}>+ Add to ${esc(S.purchase.name)}</button>
+  <button id="addBtn" class="btn-primary btn-wide" data-a="addToPurchase">+ Add to ${esc(S.purchase.name)}</button>
   <div class="row between" style="margin-top:-8px"><span class="small muted">${S.purchase.items.length} coin${S.purchase.items.length === 1 ? '' : 's'} in this lot</span><button class="btn-link small" data-a="go" data-s="lots">Change lot</button></div>
   <button class="btn-ghost btn-wide" data-a="listing">Create listing</button>
 
@@ -1247,7 +1247,7 @@ function render() {
   bar.hidden = !showBar;
   if (showBar) {
     const T = lotTotals();
-    bar.innerHTML = `<button data-a="go" data-s="purchase"><span>${esc(S.purchase.name)} · ${n} coin${n === 1 ? '' : 's'}</span><span class="num">${money(T.cost)} · +${money(T.profitMid)} ›</span></button>`;
+    bar.innerHTML = `<button data-a="go" data-s="purchase"><span>${esc(S.purchase.name)} · ${n} coin${n === 1 ? '' : 's'}</span><span class="num">${money(T.cost)} · ${T.profitMid < 0 ? money(T.profitMid) : "+" + money(T.profitMid)} ›</span></button>`;
   }
   window.scrollTo(0, 0);
 }
@@ -1637,7 +1637,8 @@ document.addEventListener('click', (e) => {
   }
   if (a === 'addToPurchase') {
     const an = analyze(S.coin, S.grades, S.confirmed, S.cost, null, S.expSale);
-    const cost = an.cost ?? an.targetBuy ?? 0;
+    // Never block adding: fall back to melt (or 0) as a placeholder cost the dealer can edit in the lot.
+    const cost = an.cost ?? an.targetBuy ?? (an.melt > 0 ? an.melt : 0);
     const item = { coinId: S.coin.id, grades: [...S.grades], confirmed: S.confirmed, cost: Math.round(cost * 100) / 100, thumb: S.photos.thumb || null };
     if (S.coin.source === 'ai') { item.coin = S.coin; item.expSale = S.expSale; }
     S.purchase.items.push(item);
@@ -1716,7 +1717,7 @@ document.addEventListener('input', (e) => {
     const calc = document.getElementById('calc');
     const pos = el.selectionStart;
     calc.innerHTML = calcInner(S.coin, a);
-    const ab = document.getElementById('addBtn'); if (ab) ab.disabled = (a.hideTarget || a.targetBuy == null) && !a.cost;
+
     const ni = document.getElementById('cost'); ni.focus(); try { ni.setSelectionRange(pos, pos); } catch (_) {}
     return;
   }
