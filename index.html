@@ -718,6 +718,9 @@ screens.money = () => {
   ${c.lookupPending ? '<p class="small muted">Checking Numista and Greysheet…</p>' : ''}
 
 
+  ${c.gsVarieties ? `<div class="card"><span class="eyebrow">Which variety?</span>
+    <div class="list">${c.gsVarieties.map((v, i) => `<button data-a="pickVariety" data-i="${i}" style="${c.gsVariety === i ? 'border-color:var(--accent);background:var(--accent-soft)' : ''}"><span>${esc(v.name)}</span><span class="small muted">${c.gsVariety === i ? 'Selected' : ''}</span></button>`).join('')}</div>
+    <span class="small muted">${c.gsVariety == null ? 'Prices cover all varieties until you pick one.' : 'Prices are for this variety.'}</span></div>` : ''}
   <div class="card">
     <span class="eyebrow">Estimated market</span>
     <span class="big">${a.range ? range$(a.range) : 'Not enough data'}</span>
@@ -813,9 +816,15 @@ screens.details = () => {
     : nm.error ? `Numista error: ${nm.error}`
     : nm.matched ? `Numista match: ${nm.title}${nm.issue ? ` · ${nm.issue.year}${nm.issue.mint_letter ? ' ' + nm.issue.mint_letter : ''}` : ' · year/mint not matched'}`
     : `Numista: no confident match. Tried ${(nm.tried || []).map((t) => `"${t.q}" → ${t.top || (t.error ? t.error : 'no results')}`).join('; ')}`;
+  const gl = c.lookup && c.lookup.greysheet;
+  const gsNote = c.source !== 'ai' || !c.lookup ? '' : !gl ? 'Greysheet: not checked'
+    : gl.error && !gl.prices ? `Greysheet error: ${gl.error}`
+    : gl.prices && gl.prices.length && gl.name_check !== false ? `Greysheet match: ${c.gsName || (gl.varieties ? gl.varieties.length + ' varieties' : 'found')}${gl.via === 'catalog' ? ' (found by catalog browse)' : ' (by PCGS number)'}`
+    : `Greysheet: no price found${gl.path ? `. Browsed: ${gl.path.join(' › ')}` : ''}${gl.note ? ` (${gl.note})` : ''}${gl.browse_error ? ` (${gl.browse_error})` : ''}`;
   return `
   <div class="topbar"><button class="back" data-a="go" data-s="money">Back</button></div>
   <h2>${esc(c.name)}</h2>
+  ${gsNote ? `<p class="small muted">${esc(gsNote)}</p>` : ''}
   ${c.numistaUrl ? `<a class="btn btn-ghost btn-wide" href="${esc(c.numistaUrl)}" target="_blank" rel="noopener">Compare with Numista photos · ${esc(c.numista)} ›</a>` : ''}
   ${numistaNote ? `<p class="small muted">${esc(numistaNote)}</p>` : ''}
   <div class="card"><table><tbody>${rows.map(([k, v]) => `<tr><th>${k}</th><td class="num">${esc(v)}</td></tr>`).join('')}</tbody></table>
@@ -1018,21 +1027,31 @@ function mergeLookup(coin, L) {
   const g = L.greysheet;
   if (g && g.prices && g.prices.length && g.name_check !== false) {
     coin.gsName = g.name; coin.gsid = g.gsid; coin.pcgs = g.pcgs;
-    const by = {}, grey = {};
-    for (const r of g.prices) {
-      const b = BUCKET(r.grade || parseInt(String(r.label || '').replace(/\D/g, ''), 10) || 0);
-      if (!b) continue;
-      if (r.cpg) (by[b] = by[b] || []).push(r.cpg);
-      if (r.grey) (grey[b] = grey[b] || []).push(r.grey);
-    }
-    coin.cpg = Object.fromEntries(Object.entries(by).map(([k, v]) => [k, median(v)]));
-    coin.cpgRange = Object.fromEntries(Object.entries(by).map(([k, v]) => [k, [Math.min(...v), Math.max(...v)]]));
-    const allCpg = g.prices.map((r) => r.cpg).filter(Boolean);
-    if (allCpg.length) coin.cpg.ANY = Math.min(...allCpg);
-    coin.grey = Object.fromEntries(Object.entries(grey).map(([k, v]) => [k, median(v)]));
+    coin.gsVarieties = g.varieties && g.varieties.length > 1 ? g.varieties.map((v) => ({ name: v.name, gsid: v.gsid, ...bucketize(v.prices) })) : null;
+    coin.gsVariety = null;
+    Object.assign(coin, bucketize(g.prices));
   } else if (g && g.prices && g.name_check === false) {
     coin.gsMismatch = g.name;
   }
+}
+
+// Greysheet price rows -> per-grade CPG (median), CPG range, wholesale (median).
+function bucketize(prices) {
+  const by = {}, grey = {};
+  for (const r of prices || []) {
+    const b = BUCKET(r.grade || parseInt(String(r.label || '').replace(/\D/g, ''), 10) || 0);
+    if (!b) continue;
+    if (r.cpg) (by[b] = by[b] || []).push(r.cpg);
+    if (r.grey) (grey[b] = grey[b] || []).push(r.grey);
+  }
+  const cpg = Object.fromEntries(Object.entries(by).map(([k, v]) => [k, median(v)]));
+  const all = (prices || []).map((r) => r.cpg).filter(Boolean);
+  if (all.length) cpg.ANY = Math.min(...all);
+  return {
+    cpg,
+    cpgRange: Object.fromEntries(Object.entries(by).map(([k, v]) => [k, [Math.min(...v), Math.max(...v)]])),
+    grey: Object.fromEntries(Object.entries(grey).map(([k, v]) => [k, median(v)])),
+  };
 }
 
 async function fetchLookup(coin, raw) {
@@ -1323,6 +1342,12 @@ document.addEventListener('click', (e) => {
     if (S.coin.source === 'ai') { item.coin = S.coin; item.expSale = S.expSale; }
     S.purchase.items.push(item);
     S.added = true; save(); return render();
+  }
+  if (a === 'pickVariety') {
+    const v = S.coin.gsVarieties[+t.dataset.i];
+    S.coin.gsVariety = +t.dataset.i; S.coin.gsName = v.name; S.coin.gsid = v.gsid;
+    S.coin.cpg = v.cpg; S.coin.cpgRange = v.cpgRange; S.coin.grey = v.grey;
+    return render();
   }
   if (a === 'removeItem') { S.purchase.items.splice(+t.dataset.i, 1); save(); return render(); }
   if (a === 'askClear') { S.confirmClear = true; return render(); }
