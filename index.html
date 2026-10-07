@@ -714,6 +714,7 @@ screens.money = () => {
   <h2>${esc(c.name)}</h2>
   ${a.isAI && (!a.range || a.range.source === 'ai') && !c.lookupPending ? `<div class="banner">Value below is ${a.range ? 'Claude\'s rough estimate, not market data' : 'missing'}: no CPG or Numista price found for this coin. Enter your expected sale price for real numbers.</div>` : ''}
   ${c.lookupPending ? '<p class="small muted">Checking Numista and Greysheet…</p>' : ''}
+  ${c.refImages && c.refImages.length ? `<div class="row" style="gap:8px">${c.refImages.map((u) => `<img src="${esc(u)}" alt="" style="width:56px;height:56px;border-radius:50%;object-fit:cover;border:1px solid var(--line)">`).join('')}<span class="small muted">Numista reference · ${esc(c.numista)}</span></div>` : ''}
 
   <div class="card">
     <span class="eyebrow">Estimated market</span>
@@ -804,9 +805,17 @@ screens.details = () => {
     ['Composition', c.composition], ['Fineness', c.fineness], ['Weight', c.weight],
     [c.agw ? 'AGW' : 'ASW', (c.agw || c.asw) ? (c.agw || c.asw) + ' oz' : ''], ['Mintage', c.mintage], ['Diameter', c.diameter],
     ['Catalog', c.km], ['Numista', c.numista]].filter(([, v]) => v != null && v !== '');
+  const nm = c.lookup && c.lookup.numista;
+  const numistaNote = c.source !== 'ai' ? '' : c.lookupPending ? 'Numista: checking…'
+    : !nm ? 'Numista: not checked'
+    : nm.error ? `Numista error: ${nm.error}`
+    : nm.matched ? `Numista match: ${nm.title}${nm.issue ? ` · ${nm.issue.year}${nm.issue.mint_letter ? ' ' + nm.issue.mint_letter : ''}` : ' · year/mint not matched'}`
+    : `Numista: no confident match. Tried ${(nm.tried || []).map((t) => `"${t.q}" → ${t.top || (t.error ? t.error : 'no results')}`).join('; ')}`;
   return `
   <div class="topbar"><button class="back" data-a="go" data-s="money">Back</button></div>
   <h2>${esc(c.name)}</h2>
+  ${c.refImages && c.refImages.length ? `<div class="thumbs">${c.refImages.map((u) => `<img src="${esc(u)}" alt="">`).join('')}</div>` : ''}
+  ${numistaNote ? `<p class="small muted">${esc(numistaNote)}</p>` : ''}
   <div class="card"><table><tbody>${rows.map(([k, v]) => `<tr><th>${k}</th><td class="num">${esc(v)}</td></tr>`).join('')}</tbody></table>
   <p class="small muted">${c.source === 'ai' ? (c.numistaUrl ? `Specs from Numista: <a href="${esc(c.numistaUrl)}" target="_blank" rel="noopener" style="color:var(--accent)">${esc(c.numista)}</a>.${c.gsName ? ` Pricing matched to Greysheet: ${esc(c.gsName)}.` : ''}` : 'Specs read by Claude from memory; no Numista match found. Verify before relying on them.') : 'Specs: Numista (sample values in this prototype).'}</p></div>`;
 };
