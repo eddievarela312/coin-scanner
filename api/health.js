@@ -1,3 +1,4 @@
+import { loggingStatus } from '../lib/log.js';
 // Setup check. Open /api/health?code=YOUR_ACCESS_CODE in a browser.
 // Shows whether the settings exist and whether Claude answers. Never shows the key.
 const MODEL = process.env.CLAUDE_MODEL || 'claude-sonnet-5-5';
@@ -9,6 +10,8 @@ export default async function handler(req, res) {
     access_code_set: !!process.env.APP_ACCESS_CODE,
     model: MODEL,
     workspace_id_set: !!process.env.ANTHROPIC_WORKSPACE_ID,
+    admin_code_set: !!process.env.ADMIN_CODE,
+    ...loggingStatus(),
   };
   const code = process.env.APP_ACCESS_CODE;
   if (!code || req.query.code !== code) {

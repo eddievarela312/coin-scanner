@@ -1,11 +1,11 @@
 // Read-only scan log for accuracy review.
 // Open /api/scans?code=ADMIN_CODE  (add &photos=1 for temporary photo links, &limit=50)
-import { listScans, signedUrl, loggingOn } from '../lib/log.js';
+import { listScans, signedUrl, loggingOn, loggingStatus } from '../lib/log.js';
 
 export default async function handler(req, res) {
   const admin = process.env.ADMIN_CODE;
   if (!admin || req.query.code !== admin) return res.status(401).json({ error: 'Add ?code=ADMIN_CODE. Set ADMIN_CODE in Vercel first.' });
-  if (!loggingOn()) return res.status(200).json({ error: 'Logging is off. Add SUPABASE_URL and SUPABASE_SERVICE_KEY in Vercel.' });
+  if (!loggingOn()) return res.status(200).json({ error: 'Logging is off. Add SUPABASE_URL and SUPABASE_SERVICE_KEY in Vercel, then redeploy.', ...loggingStatus() });
   try {
     const limit = Math.min(500, Math.max(1, parseInt(req.query.limit, 10) || 200));
     const rows = await listScans(limit);
