@@ -550,7 +550,7 @@ const tone = (status) => ({ Likely: 'good', Possible: 'warn', Unlikely: 'bad', F
 function aiRange(coin, g, expSale) {
   const m = melt(coin, spot());
   const exp = parseFloat(expSale);
-  if (exp > 0) return { low: exp, high: exp, mid: exp, basis: 'your expected sale price', grades: g, source: 'dealer' };
+  if (exp > 0) return { low: exp, high: exp, mid: exp, basis: 'your comps number', grades: g, source: 'dealer' };
   const cpg = g.map((k) => coin.cpg && coin.cpg[k]).filter((v) => v > 0);
   if (cpg.length) {
     const lo = Math.max(Math.min(...cpg) * 0.85, m), hi = Math.max(Math.max(...cpg), m);
@@ -561,7 +561,7 @@ function aiRange(coin, g, expSale) {
   if (nv.length) {
     const lows = g.map((k) => coin.numistaLow && coin.numistaLow[k]).filter((v) => v > 0 && v < Infinity);
     const lo = Math.max(Math.min(...(lows.length ? lows : nv)), m), hi = Math.max(Math.max(...nv), m);
-    return { low: lo, high: hi, mid: Math.round((lo + hi) / 2 * 100) / 100, basis: coin.varieties ? 'Numista price estimates, covering all varieties of this year' : 'Numista price estimates', grades: g, source: 'numista' };
+    return { low: lo, high: hi, mid: Math.round((lo + hi) / 2 * 100) / 100, basis: coin.varieties ? 'Numista estimates (all varieties of this year; can lag recent sales)' : 'Numista estimates (can lag recent sales)', grades: g, source: 'numista' };
   }
   const parts = g.map((k) => coin.aiValue && coin.aiValue[k]).filter((v) => Array.isArray(v) && v.length === 2 && v[1] > 0);
   if (!parts.length) return null;
@@ -884,19 +884,21 @@ screens.money = () => {
   <div class="card">
     <div class="row between"><span class="eyebrow">Market</span><span class="pill warn">AI estimate</span></div>
     <span class="big" style="color:var(--warn)">${a.range ? range$(a.range) : '—'}</span>
-    <span class="small muted">No CPG or Numista price for this coin, so this is Claude's estimate, not sales data. Check sales before paying well over melt.</span>
-    <label class="field" for="expsale">Know what it sells for? (optional)
-      <input id="expsale" type="number" inputmode="decimal" min="0" step="0.01" placeholder="Your expected sale price" value="${esc(S.expSale)}"></label>
+    <span class="small muted">No CPG or Numista price for this coin, so this is Claude's estimate, not sales data. Check comps below before paying well over melt.</span>
   </div>` : `
   <div class="card">
     <span class="eyebrow">Market</span>
     <span class="big">${a.range ? range$(a.range) : '—'}</span>
     <span class="small muted">${a.range ? `Based on ${esc(a.range.basis)}${!a.confirmed ? ' · narrows when you confirm the grade' : ''}` : ''}</span>
-    ${a.range && a.range.source === 'dealer' ? `<label class="field" for="expsale">Expected sale price
-      <input id="expsale" type="number" inputmode="decimal" min="0" step="0.01" value="${esc(S.expSale)}"></label>` : ''}
   </div>`}
 
   ${priceCheck(c, a)}
+  <div class="card">
+    ${compsButton(c)}
+    <label class="field" for="expsale">What are comps selling for? (optional)
+      <input id="expsale" type="number" inputmode="decimal" min="0" step="0.01" placeholder="e.g. 200" value="${esc(S.expSale)}"></label>
+    <span class="small muted">${a.range && a.range.source === 'dealer' ? `Using your number. <button class="btn-link small" data-a="clearExp" style="padding:0">Go back to the estimate</button>` : 'Your number replaces the estimate above and sets the target buy.'}</span>
+  </div>
   <div class="card">
     <span class="eyebrow">Target buy</span>
     ${a.hideTarget
@@ -907,7 +909,6 @@ screens.money = () => {
            <span class="small muted">${pct(a.margin)} margin${feeOn() ? ' ' + feeNote() : ''}${a.limited ? ', from the low end of the AI estimate' : a.confirmed ? '' : ', from the low end until grade is confirmed'}${profitTxt ? ` · expected profit ${profitTxt}` : ''} · <button class="btn-link small" data-a="go" data-s="settings" style="padding:0">Change</button></span>`}
   </div>
 
-  ${compsButton(c)}
   <div class="grid2">
     <div class="tile"><span class="eyebrow">Melt</span>${a.melt > 0 ? `<b class="num">${money(a.melt)}</b>` : '<span class="small muted">No silver or gold</span>'}</div>
     <div class="tile"><span class="eyebrow">CPG</span>${a.cpg.length ? `<b class="num">${a.cpg.map(money).join('–')}</b><a class="small" href="https://www.greysheet.com" target="_blank" rel="noopener" style="color:var(--accent)">via CDN</a>` : `<span class="small muted">${c.lookupPending ? 'Loading…' : c.gsMismatch ? 'No exact match' : 'Not found'}</span>`}</div>
@@ -941,12 +942,11 @@ function priceCheck(c, a) {
   if (!parts.length) return '';
   const lo = Math.min(...parts.map((p) => +p[0])), hi = Math.max(...parts.map((p) => +p[1]));
   const src = a.range.source === 'cpg' ? 'CPG' : 'Numista';
-  const input = `<label class="field" for="expsale">Know what it sells for? Use your number
-      <input id="expsale" type="number" inputmode="decimal" min="0" step="0.01" placeholder="Your expected sale price" value="${esc(S.expSale)}"></label>`;
+  const input = '';
   if (lo > a.range.high * 1.4) return `<div class="feas warn"><b>Prices disagree: this date may be worth more</b>
-    <span class="small">Claude expects about ${money(lo)}–${money(hi)} for this exact date. The ${src} figure may be pricing it like a common date. Check eBay sold comps before you buy or sell.</span>${input}</div>`;
+    <span class="small">Claude expects about ${money(lo)}–${money(hi)} for this exact date. The ${src} figure may be pricing it like a common date. Check eBay sold comps below and enter what they show.</span>${input}</div>`;
   if (hi < a.range.low * 0.6) return `<div class="feas warn"><b>Prices disagree: this may be worth less</b>
-    <span class="small">Claude expects about ${money(lo)}–${money(hi)}, below the ${src} figure. Check eBay sold comps before paying the target buy.</span>${input}</div>`;
+    <span class="small">Claude expects about ${money(lo)}–${money(hi)}, below the ${src} figure. Check eBay sold comps below before paying the target buy.</span>${input}</div>`;
   return '';
 }
 function compsButton(c) {
@@ -1884,6 +1884,7 @@ document.addEventListener('click', (e) => {
     if (FEE_PRESETS[ch]) { S.settings.fee.pct = FEE_PRESETS[ch].pct; S.settings.fee.fixed = FEE_PRESETS[ch].fixed; }
     save(); return render();
   }
+  if (a === 'clearExp') { S.expSale = ''; return render(); }
   if (a === 'fastMode') { store.set('cs.fast', t.dataset.v === '1'); return render(); }
   if (a === 'askClear') { S.confirmClear = true; return render(); }
   if (a === 'cancelClear') { S.confirmClear = false; return render(); }
