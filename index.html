@@ -555,6 +555,7 @@ screens.idfail = () => `
   <h2>We couldn't confidently identify this coin</h2>
   <p class="muted">${esc(S.idError || 'Try sharper photos, or enter what you can read and search again.')}</p>
   ${S.ai && S.ai.photo_feedback && !/no image/i.test(S.ai.photo_feedback) ? `<div class="banner">${esc(S.ai.photo_feedback)}</div>` : ''}
+  ${S.idDetail ? `<p class="small muted mono" style="word-break:break-word">Details: ${esc(S.idDetail)}</p>` : ''}
   <button class="btn-primary btn-wide" data-a="scan">Try new photos</button>
   <button class="btn-ghost btn-wide" data-a="manual">Enter details and search</button>`;
 
@@ -955,7 +956,7 @@ async function serverJson(hints, images, signal) {
   if (res.status === 413) throw { code: 'image_rejected' };
   if (res.status === 429) throw { code: 'rate_limited' };
   const data = await res.json().catch(() => null);
-  if (!res.ok || !data) throw { code: (data && data.error) || 'upstream_error' };
+  if (!res.ok || !data) throw { code: (data && data.error) || 'upstream_error', detail: data ? data.detail : `Server returned ${res.status}` };
   return data;
 }
 let idCtl = null, idTimer = null;
@@ -1053,6 +1054,7 @@ const ID_ERRORS = {
   invalid_json: 'The answer came back garbled. Try again.',
   session_expired: 'Your Claude session expired. Sign in again.',
   network: 'No connection to the server. Check your signal and try again.',
+  no_credit: 'Your Anthropic account has no credit. Add credit at console.anthropic.com under Billing, then scan again.',
   not_configured: 'The app\'s API key isn\'t set up yet. Add ANTHROPIC_API_KEY in Vercel settings and redeploy.',
 };
 
@@ -1082,7 +1084,7 @@ async function runIdentify(hints, opts = {}) {
       ? await serverJson(hints, images, idCtl.signal)
       : await sample.json(ID_PROMPT(hints), { images: images.length ? images : undefined, signal: idCtl.signal, modelTier: 'default', cache: false });
     S.idSeconds = Math.round((Date.now() - t0) / 1000);
-    S.ai = r;
+    S.ai = r; S.idDetail = '';
     if (!r || r.identified === false || !r.coin_name) {
       S.idError = 'Claude couldn\'t tell what this coin is from these photos.';
       return go('idfail');
@@ -1097,6 +1099,7 @@ async function runIdentify(hints, opts = {}) {
     if (e && e.code === 'need_code') { store.set('cs.code', ''); S.codeWrong = true; S.pending = { hints, opts }; return go('code'); }
     if (e && e.code === 'images_unavailable') { S.idError = 'This view of Claude can\'t send photos yet. Open this page at claude.ai in Safari or on a computer and scan again.'; S.ai = null; return go('idfail'); }
     S.idError = ID_ERRORS[e && e.code] || 'Something went wrong reaching Claude. Try again.';
+    S.idDetail = e && e.detail ? String(e.detail).slice(0, 300) : '';
     go('idfail');
   } finally {
     clearInterval(idTimer);

@@ -62,7 +62,9 @@ export default async function handler(req, res) {
   const code = process.env.APP_ACCESS_CODE;
   if (!code || req.headers['x-access-code'] !== code) return res.status(401).json({ error: 'need_code' });
 
-  const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
+  let body;
+  try { body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {}); }
+  catch (_) { return res.status(400).json({ error: 'bad_request', detail: 'Request body was not valid JSON.' }); }
   const hints = String(body.hints || '').slice(0, 1000);
   const images = Array.isArray(body.images) ? body.images.slice(0, 2).filter((x) => typeof x === 'string') : [];
   if (images.some((x) => x.length > MAX_IMAGE_B64)) return res.status(413).json({ error: 'image_rejected' });
@@ -84,11 +86,17 @@ export default async function handler(req, res) {
       body: JSON.stringify({ model: MODEL, max_tokens: 2000, messages: [{ role: 'user', content }] }),
     });
   } catch (e) {
-    return res.status(502).json({ error: 'upstream_error' });
+    return res.status(502).json({ error: 'upstream_error', detail: 'Could not reach Claude: ' + String(e && e.message || e) });
   }
   if (r.status === 429) return res.status(429).json({ error: 'rate_limited' });
   if (r.status === 401 || r.status === 403) return res.status(500).json({ error: 'not_configured' });
-  if (!r.ok) return res.status(502).json({ error: 'upstream_error', detail: (await r.text()).slice(0, 300) });
+  if (!r.ok) {
+    const raw = await r.text();
+    let detail = raw.slice(0, 300);
+    try { detail = JSON.parse(raw).error.message; } catch (_) {}
+    if (/credit balance/i.test(detail)) return res.status(402).json({ error: 'no_credit', detail });
+    return res.status(502).json({ error: 'upstream_error', detail: `Claude returned ${r.status}: ${detail}` });
+  }
 
   const out = await r.json();
   const text = (out.content || []).filter((c) => c.type === 'text').map((c) => c.text).join('');
