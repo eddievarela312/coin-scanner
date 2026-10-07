@@ -659,17 +659,17 @@ screens.lots = () => {
   const row = (l) => {
     const T = lotSummary(l);
     const maybe = l.items.filter((it) => it.status === 'maybe').length;
-    const pill = l.kind === 'singles' ? '' : `<span class="pill ${l.status === 'bought' ? 'good' : 'neutral'}" style="margin-left:4px">${l.status === 'bought' ? 'Bought' : 'Considering'}</span>`;
+    const pill = l.kind === 'singles' ? '' : `<span class="pill ${l.status === 'bought' ? 'good' : 'neutral'}" style="margin-left:4px">${l.status === 'bought' ? 'Bought' : 'Negotiating'}</span>`;
     return `<button data-a="openLot" data-id="${esc(l.id)}">
       <span style="min-width:0"><b>${esc(l.name)}</b> ${pill}<br>
-      <span class="small muted">${l.items.length - maybe} coin${l.items.length - maybe === 1 ? '' : 's'}${maybe ? ` + ${maybe} maybe` : ''}${T && T.count ? ` · cost ${money(T.cost)} · profit ${money(T.profitMid)}` : ''}${l.notes ? ' · ' + esc(l.notes.slice(0, 40)) : ''}</span></span>
+      <span class="small muted">${l.items.length - maybe} coin${l.items.length - maybe === 1 ? '' : 's'}${maybe ? ` + ${maybe} set aside` : ''}${T && T.count ? ` · cost ${money(T.cost)} · profit ${money(T.profitMid)}` : ''}${l.notes ? ' · ' + esc(l.notes.slice(0, 40)) : ''}</span></span>
       <span aria-hidden="true">›</span></button>`;
   };
   const lots = realLots();
   return `
   <div class="topbar"><button class="back" data-a="go" data-s="home">Home</button></div>
   <h2>Lots &amp; buys</h2>
-  <p class="small muted">Use a lot for a table or seller with several coins. One-coin deals go to Single buys.</p>
+  <p class="small muted">Use a lot for a table or seller with several coins: it stays <b>Negotiating</b> until you mark it <b>Bought</b>. One-coin deals go to Single buys.</p>
   ${sg ? `<div class="list">${row(sg)}</div>` : ''}
   <div class="list">${lots.map(row).join('') || '<p class="muted">No lots yet. Save a scanned coin to a lot, or start one here.</p>'}</div>
   <button class="btn-ghost btn-wide" data-a="newLot">+ New lot</button>`;
@@ -961,7 +961,7 @@ function actionArea(a) {
   if (S.added) {
     const L = S.lots.find((l) => l.id === S.added.lot);
     const bought = S.added.kind === 'bought';
-    return `<div class="toast">✓ ${bought ? `Bought for ${money(S.added.cost)} · in Single buys` : `Saved to ${esc(L ? L.name : 'lot')} as ${S.added.status === 'maybe' ? 'Maybe' : 'Buy'}`}</div>
+    return `<div class="toast">✓ ${bought ? `Bought for ${money(S.added.cost)} · in Single buys` : `Saved to ${esc(L ? L.name : 'lot')} · ${S.added.status === 'maybe' ? 'maybe, not in the offer' : 'in the offer'}`}</div>
       ${bought ? '<button class="btn-primary btn-wide" data-a="listing">Create listing</button>' : ''}
       <div class="grid2"><button class="${bought ? 'btn-ghost' : 'btn-primary'}" data-a="scan">Scan next coin</button><button class="btn-ghost" data-a="openLot" data-id="${esc(S.added.lot)}">${bought ? 'Single buys ›' : 'View lot ›'}</button></div>`;
   }
@@ -977,10 +977,10 @@ function actionArea(a) {
     return `<div class="sheet">
       <b>Save to a lot</b>
       <div class="seg" role="group" aria-label="Buy or maybe">
-        <button class="${st === 'buy' ? 'on' : ''}" data-a="lotPick" data-v="buy">Buy</button>
+        <button class="${st === 'buy' ? 'on' : ''}" data-a="lotPick" data-v="buy">In my offer</button>
         <button class="${st === 'maybe' ? 'on' : ''}" data-a="lotPick" data-v="maybe">Maybe</button>
       </div>
-      <span class="small muted">${st === 'buy' ? 'Counts toward the lot total.' : 'Saved in the lot but not counted. Switch it to Buy anytime.'}</span>
+      <span class="small muted">${st === 'buy' ? 'Counts toward the lot total and your offer.' : 'Kept with the lot but left out of the total. Add it to the offer anytime.'}</span>
       ${priceField('Your price for this coin')}
       ${lots.length ? `<span class="eyebrow">Existing lots</span><div class="list">${lots.map((l) => `<button data-a="saveToLot" data-id="${esc(l.id)}"><span style="min-width:0"><b>${esc(l.name)}</b><br><span class="small muted">${l.items.length} coin${l.items.length === 1 ? '' : 's'}${l.notes ? ' · ' + esc(l.notes.slice(0, 30)) : ''}</span></span><span aria-hidden="true">+</span></button>`).join('')}</div>` : ''}
       <span class="eyebrow">${lots.length ? 'Or start a new lot' : 'New lot'}</span>
@@ -1082,7 +1082,7 @@ function itemRow(P, it, i, T) {
           <div class="small muted">${esc(it.gradeTxt)} · sells ~${money(it.mid)}</div>
           ${profit != null ? `<div class="small">Profit ${money(profit)} · margin ${pct(profit / it.mid)}</div>` : ''}
           <div class="row" style="gap:12px;flex-wrap:wrap">
-            ${P.kind === 'singles' ? '' : `<button class="btn-link small" data-a="itemStatus" data-i="${i}" data-v="${maybe ? 'buy' : 'maybe'}" style="padding:0">${maybe ? 'Move to Buy' : 'Move to Maybe'}</button>`}
+            ${P.kind === 'singles' ? '' : `<button class="btn-link small" data-a="itemStatus" data-i="${i}" data-v="${maybe ? 'buy' : 'maybe'}" style="padding:0">${maybe ? (P.status === 'bought' ? 'Mark as bought' : 'Add to offer') : (P.status === 'bought' ? 'Didn\'t buy' : 'Set aside')}</button>`}
             ${bought && !raw.quick ? `<button class="btn-link small" data-a="itemListing" data-i="${i}" style="padding:0">Create listing</button>` : ''}
             <button class="btn-link small" data-a="removeItem" data-i="${i}" style="padding:0;color:var(--muted)">Remove</button>
           </div>
@@ -1122,7 +1122,7 @@ screens.purchase = () => {
     <div class="topbar"><button class="back" data-a="go" data-s="home">Home</button><button class="btn-link" data-a="go" data-s="lots">All lots ›</button></div>
     <input id="lotname" type="text" value="${esc(P.name)}" aria-label="Lot name" style="font-family:var(--f-display);font-size:1.45rem;font-weight:700;border:0;padding:4px 0;min-height:0;background:transparent">
     <div class="row" style="gap:8px">
-      <button class="pill ${P.status !== 'bought' ? 'warn' : 'neutral'}" data-a="lotStatus" data-v="considering" style="border:0;min-height:36px;padding:6px 14px">Considering</button>
+      <button class="pill ${P.status !== 'bought' ? 'warn' : 'neutral'}" data-a="lotStatus" data-v="considering" style="border:0;min-height:36px;padding:6px 14px">Negotiating</button>
       <button class="pill ${P.status === 'bought' ? 'good' : 'neutral'}" data-a="lotStatus" data-v="bought" style="border:0;min-height:36px;padding:6px 14px">Bought</button>
     </div>
     <label class="field" for="lotnotes">Table / notes<input id="lotnotes" type="text" value="${esc(P.notes || '')}" placeholder="e.g. Table 412, Mike, open to bulk deal"></label>`;
@@ -1147,7 +1147,7 @@ screens.purchase = () => {
       <div><span class="eyebrow">Estimated market</span><div class="mid" style="font-size:1.35rem">${money(T.low)}–${money(T.high)}</div></div>
       <div><span class="eyebrow">Total melt</span><div class="mid" style="font-size:1.35rem">${money(T.meltTotal)}</div></div>
     </div>
-    ${maybeIdx.length ? `<span class="small muted">${buyIdx.length} Buy coin${buyIdx.length === 1 ? '' : 's'} counted · ${maybeIdx.length} Maybe not counted</span>` : ''}
+    ${maybeIdx.length ? `<span class="small muted">${buyIdx.length} coin${buyIdx.length === 1 ? '' : 's'} counted · ${maybeIdx.length} ${P.status === 'bought' ? 'not bought' : 'set aside'}, not counted</span>` : ''}
   </div>
   ${P.status === 'bought' ? '' : `
   <div class="card">
@@ -1157,12 +1157,12 @@ screens.purchase = () => {
   </div>`}
   <div class="card" id="lotcalc">${lotCalcInner(T)}</div>
   <div class="card">
-    <span class="eyebrow">Buy · ${buyIdx.length} · tap a cost to edit</span>
+    <span class="eyebrow">${P.status === 'bought' ? 'Bought' : 'In my offer'} · ${buyIdx.length} · tap a cost to edit</span>
     ${buyIdx.map((i) => itemRow(P, rows[i], i, T)).join('')}
     ${P.lotOffer ? '<p class="small muted">Per-coin costs are split from your lot offer by expected sale value.</p>' : ''}
-  </div>` : '<div class="card"><p class="muted">No coins marked Buy yet. Move a Maybe to Buy to see totals.</p></div>'}
+  </div>` : '<div class="card"><p class="muted">No coins in the offer yet. Tap Add to offer on a coin below to see totals.</p></div>'}
   ${maybeIdx.length ? `<div class="card">
-    <span class="eyebrow">Maybe · ${maybeIdx.length} · not in the total</span>
+    <span class="eyebrow">${P.status === 'bought' ? 'Not bought' : 'Maybe · set aside'} · ${maybeIdx.length} · not in the total</span>
     ${maybeIdx.map((i) => itemRow(P, rows[i], i, T)).join('')}
   </div>` : ''}
   <div class="grid2"><button class="btn-primary" data-a="scan">Scan a coin</button><button class="btn-ghost" data-a="go" data-s="quick">+ Quick add</button></div>
@@ -1418,7 +1418,7 @@ function render() {
   if (showBar) {
     const T = lotSummary(SL) || { cost: 0, profitMid: 0 };
     const nb = SL.items.filter((it) => it.status !== 'maybe').length, nm = SL.items.length - nb;
-    bar.innerHTML = `<button data-a="openLot" data-id="${esc(SL.id)}"><span>${esc(SL.name)} · ${nb} buy${nm ? ` + ${nm} maybe` : ''}</span><span class="num">${money(T.cost)} · ${T.profitMid < 0 ? money(T.profitMid) : '+' + money(T.profitMid)} ›</span></button>`;
+    bar.innerHTML = `<button data-a="openLot" data-id="${esc(SL.id)}"><span>${esc(SL.name)} · ${nb} in offer${nm ? ` + ${nm} maybe` : ''}</span><span class="num">${money(T.cost)} · ${T.profitMid < 0 ? money(T.profitMid) : '+' + money(T.profitMid)} ›</span></button>`;
   }
   window.scrollTo(0, 0);
 }
