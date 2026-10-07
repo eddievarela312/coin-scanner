@@ -500,15 +500,18 @@ function analyze(coin, grades, confirmed, costInput, marginOverride, expSale) {
   const g = coin.skipGrade ? ['ANY'] : grades;
   const isConfirmed = coin.skipGrade || confirmed;
   const isAI = coin.source === 'ai';
-  const range = isAI ? aiRange(coin, g, expSale) : marketRange(coin, g, spot());
-  const tb = targetBuy(range, m, isConfirmed);
+  const isQuick = coin.source === 'quick';
+  let range = isQuick ? null : isAI ? aiRange(coin, g, expSale) : marketRange(coin, g, spot());
+  if (isQuick) { const mv = melt(coin, spot()); range = { low: mv, high: mv, mid: mv, basis: 'melt', grades: g, source: 'melt' }; }
+  const limited = isAI && (!range || range.source === 'ai');
+  const tb = limited ? null : targetBuy(range, m, isConfirmed);
   const hideTarget = coin.gradeSensitive && !isConfirmed;
   const cost = parseFloat(costInput);
   const effCost = cost > 0 ? cost : tb;
-  const liq = isAI ? null : liquidity(coin, spot(), range);
+  const liq = isAI || isQuick ? null : liquidity(coin, spot(), range);
   const feas = effCost > 0 && (!isAI || (range && range.source === 'cpg')) ? feasibility(coin, g, effCost, m, spot()) : null;
   return {
-    isAI, margin: m, grades: g, confirmed: isConfirmed, range, targetBuy: tb, hideTarget, liq, feas,
+    isAI, limited, margin: m, grades: g, confirmed: isConfirmed, range, targetBuy: tb, hideTarget, liq, feas,
     melt: melt(coin, spot()), cost: cost > 0 ? cost : null, effCost,
     profitLow: range && effCost ? range.low - effCost : null,
     profitHigh: range && effCost ? range.high - effCost : null,
@@ -706,34 +709,65 @@ function feasBlock(a, coin) {
   </div>`;
 }
 
+// One line answering "what is it / what's in it".
+function identityLine(c) {
+  const parts = [];
+  if (c.km) parts.push(c.km);
+  const comp = String(c.composition || '').replace(/\s*\(.*\)\s*/, ' ').trim();
+  if (c.fineness && comp) parts.push(`${c.fineness} ${comp.toLowerCase()}`); else if (comp) parts.push(comp);
+  if (c.asw) parts.push(`${(+c.asw).toFixed(4)} oz silver`);
+  if (c.agw) parts.push(`${(+c.agw).toFixed(4)} oz gold`);
+  return parts.join(' · ');
+}
+
 screens.money = () => {
   const c = S.coin;
   const a = analyze(c, S.grades, S.confirmed, S.cost, null, S.expSale);
   const gradeTxt = gradeLabel(c, a.grades);
+  const idl = identityLine(c);
+  const roughAI = c.aiValue && aiRange(c, a.grades, '') ;
+  const profitTxt = a.targetBuy && a.range ? (() => {
+    const lo = a.range.low - a.targetBuy, hi = a.range.high - a.targetBuy;
+    return money(lo) === money(hi) ? `~${money(hi)}` : `~${money(lo)}–${money(hi)}`;
+  })() : null;
   return `
   <div class="topbar"><button class="back" data-a="go" data-s="${c.skipGrade ? 'match' : 'grade'}">Back</button>
     ${c.skipGrade ? '<span class="pill neutral">Bullion pricing</span>' : `<button class="btn-link" data-a="go" data-s="grade">${a.confirmed ? `${gradeTxt} · Change` : `${gradeTxt} suggested · Confirm`}</button>`}</div>
-  ${S.added ? `<div class="toast">Added to Purchase #${S.purchase.no} · ${S.purchase.items.length} coin${S.purchase.items.length === 1 ? '' : 's'}</div>` : ''}
-  <h2>${esc(c.name)}</h2>
-  ${a.isAI && (!a.range || a.range.source === 'ai') && !c.lookupPending ? `<div class="banner">Value below is ${a.range ? 'Claude\'s rough estimate, not market data' : 'missing'}: no CPG or Numista price found for this coin. Enter your expected sale price for real numbers.</div>` : ''}
-  ${c.lookupPending ? '<p class="small muted">Checking Numista and Greysheet…</p>' : ''}
-
+  ${S.added ? `<div class="toast">✓ Added · Purchase #${S.purchase.no} · ${S.purchase.items.length} coin${S.purchase.items.length === 1 ? '' : 's'}</div>` : ''}
+  <div class="stack" style="gap:4px">
+    <h2>${esc(c.name)}</h2>
+    ${idl ? `<span class="small muted">${esc(idl)}</span>` : ''}
+    ${c.lookupPending ? '<span class="small muted">Checking Numista and Greysheet…</span>' : ''}
+  </div>
 
   ${c.gsVarieties ? `<div class="card"><span class="eyebrow">Which variety?</span>
     <div class="list">${c.gsVarieties.map((v, i) => `<button data-a="pickVariety" data-i="${i}" style="${c.gsVariety === i ? 'border-color:var(--accent);background:var(--accent-soft)' : ''}"><span>${esc(v.name)}</span><span class="small muted">${c.gsVariety === i ? 'Selected' : ''}</span></button>`).join('')}</div>
     <span class="small muted">${c.gsVariety == null ? 'Prices cover all varieties until you pick one.' : 'Prices are for this variety.'}</span></div>` : ''}
+
+  ${a.limited ? `
   <div class="card">
-    <span class="eyebrow">Estimated market</span>
-    <span class="big">${a.range ? range$(a.range) : 'Not enough data'}</span>
-    <span class="small muted">${a.range ? `Based on ${esc(a.range.basis)}${!a.confirmed ? ' · narrows when you confirm the grade' : ''}` : (a.isAI ? 'Enter your expected sale price below.' : 'No sales or CPG found for this coin yet.')}</span>
-  </div>
+    <span class="eyebrow">Market</span>
+    <span class="mid">Market data limited</span>
+    <span class="small muted">No CPG or Numista price for this coin.${roughAI ? ` Claude's rough guess: ${range$(roughAI)} (not market data).` : ''} Check sales, then enter what you expect to sell it for.</span>
+    <label class="field" for="expsale">Expected sale price
+      <input id="expsale" type="number" inputmode="decimal" min="0" step="0.01" placeholder="e.g. 45" value="${esc(S.expSale)}"></label>
+  </div>` : `
+  <div class="card">
+    <span class="eyebrow">Market</span>
+    <span class="big">${a.range ? range$(a.range) : '—'}</span>
+    <span class="small muted">${a.range ? `Based on ${esc(a.range.basis)}${!a.confirmed ? ' · narrows when you confirm the grade' : ''}` : ''}</span>
+    ${a.range && a.range.source === 'dealer' ? `<label class="field" for="expsale">Expected sale price
+      <input id="expsale" type="number" inputmode="decimal" min="0" step="0.01" value="${esc(S.expSale)}"></label>` : ''}
+  </div>`}
 
   <div class="card">
-    <span class="eyebrow">Your target buy</span>
+    <span class="eyebrow">Target buy</span>
     ${a.hideTarget
       ? `<span class="mid">Confirm grade</span><button class="btn-ghost" data-a="go" data-s="grade">Pick the grade</button>`
-      : `<span class="big">${money(a.targetBuy)}</span>
-         <span class="small muted">${pct(a.margin)} target margin${a.confirmed ? '' : ', from the low end until grade is confirmed'} · <button class="btn-link small" data-a="go" data-s="settings" style="padding:0">Change</button></span>`}
+      : a.targetBuy == null
+        ? `<span class="mid">—</span><span class="small muted">Enter an expected sale price to get a target buy.</span>`
+        : `<span class="big">${money(a.targetBuy)}</span>
+           <span class="small muted">${pct(a.margin)} margin${a.confirmed ? '' : ', from the low end until grade is confirmed'}${profitTxt ? ` · expected profit ${profitTxt}` : ''} · <button class="btn-link small" data-a="go" data-s="settings" style="padding:0">Change</button></span>`}
   </div>
 
   <div class="grid3">
@@ -745,17 +779,22 @@ screens.money = () => {
     <button class="tile" data-a="go" data-s="sales" style="border:0;min-height:0;font-weight:400;color:var(--ink);text-align:left;justify-content:flex-start;align-items:stretch"><span class="eyebrow">Sales ›</span><b class="num">${a.isAI ? '<span class="small">eBay · PCGS</span>' : salesRange(c, a.grades)}</b></button>
   </div>
 
-  ${greyLine(c, a)}
-  <div class="card" id="calc">${calcInner(c, a)}</div>
+  <button id="addBtn" class="btn-primary btn-wide" data-a="addToPurchase" ${(a.hideTarget || a.targetBuy == null) && !a.cost ? 'disabled' : ''}>+ Add to purchase</button>
+  <button class="btn-ghost btn-wide" data-a="listing">Create listing</button>
 
-  ${a.liq ? liquidityBlock(a.liq) : `<div class="card"><div class="row between"><span class="eyebrow">Liquidity · beta</span><span class="pill neutral">Needs sales data</span></div><p class="small muted">Turns on when Numista sales records are connected. Try a sample coin to see it working.</p></div>`}
+  <details id="more" ${S.moreOpen ? 'open' : ''}><summary>More analysis ›</summary>
+    <div class="stack" style="margin-top:8px">
+      ${greyLine(c, a)}
+      <div class="card" id="calc">${calcInner(c, a)}</div>
+      ${a.liq ? liquidityBlock(a.liq) : ''}
+    </div>
+  </details>
 
-  <button id="addBtn" class="btn-primary btn-wide" data-a="addToPurchase" ${a.hideTarget && !a.cost ? 'disabled' : ''}>Add to purchase</button>
-  <button class="btn-ghost btn-wide" data-a="scan">Scan next coin</button>
   <div class="row between">
+    <button class="btn-link" data-a="scan">Scan next coin ›</button>
     <button class="btn-link" data-a="go" data-s="details">Coin details ›</button>
-    <span class="small muted">${S.feedback ? 'Thanks, noted.' : `Correct ID? <button class="btn-link small" data-a="fb" data-v="yes">Yes</button> · <button class="btn-link small" data-a="fb" data-v="no">No</button>`}</span>
-  </div>`;
+  </div>
+  <p class="small muted" style="text-align:center">${S.feedback ? 'Thanks, noted.' : `Correct ID? <button class="btn-link small" data-a="fb" data-v="yes">Yes</button> · <button class="btn-link small" data-a="fb" data-v="no">No</button>`}</p>`;
 };
 
 // Greysheet wholesale is internal-use only: shown only when the owner code is set on this phone.
@@ -775,8 +814,6 @@ function salesRange(coin, grades) {
 
 function calcInner(c, a) {
   return `
-    ${a.isAI ? `<label class="field" for="expsale">What do you expect to sell it for?
-      <input id="expsale" type="number" inputmode="decimal" min="0" step="0.01" placeholder="${a.range && a.range.source === 'ai' ? 'Claude estimate ~' + money(a.range.mid) : 'Expected sale'}" value="${esc(S.expSale)}"></label>` : ''}
     <label class="field" for="cost">What would you pay?
       <input id="cost" type="number" inputmode="decimal" min="0" step="0.01" placeholder="${a.targetBuy ? 'Target buy ' + money(a.targetBuy) : 'Your cost'}" value="${esc(S.cost)}"></label>
     ${a.effCost && a.range ? `<div class="grid2">
@@ -838,7 +875,8 @@ screens.purchase = () => {
     <div class="topbar"><button class="back" data-a="go" data-s="home">Home</button></div>
     <h2>Purchase #${P.no}</h2>
     <div class="card"><p>No coins yet. Scan a coin and tap <b>Add to purchase</b>; the offer builds as you go.</p></div>
-    <button class="btn-primary btn-wide" data-a="scan">Scan a coin</button>`;
+    <button class="btn-primary btn-wide" data-a="scan">Scan a coin</button>
+    <button class="btn-ghost btn-wide" data-a="go" data-s="quick">+ Quick add bullion or junk silver</button>`;
   const T = lotTotals();
   const lm = T.margin;
   return `
@@ -869,7 +907,7 @@ screens.purchase = () => {
         ${it.thumb ? `<img src="${it.thumb}" alt="">` : '<span class="ph"></span>'}
         <div style="min-width:0">
           <div style="font-weight:600">${esc(it.coin.name)}</div>
-          <div class="small muted">${esc(it.gradeTxt)} · sells ~${money(it.mid)} · ${tone(it.liqLabel) === 'neutral' ? '' : `<span class="dot" style="background:var(--${tone(it.liqLabel) === 'good' ? 'good' : tone(it.liqLabel) === 'warn' ? 'warn' : 'bad'})"></span> `}${it.liqLabel}</div>
+          <div class="small muted">${esc(it.gradeTxt)} · sells ~${money(it.mid)} ${it.liqLabel ? `· <span class="dot" style="background:var(--${tone(it.liqLabel) === 'good' ? 'good' : tone(it.liqLabel) === 'warn' ? 'warn' : 'bad'})"></span> ${it.liqLabel}` : ''}</div>
           <div class="small">${it.mid ? `Profit ${money(it.mid - it.allocCost)} · margin ${pct((it.mid - it.allocCost) / it.mid)}` : 'No value yet'} <button class="btn-link small" data-a="removeItem" data-i="${i}" style="padding:0 0 0 6px">Remove</button></div>
         </div>
         <input class="costin num" type="number" inputmode="decimal" data-cost="${i}" value="${it.cost}" aria-label="Cost for ${esc(it.coin.name)}" ${P.lotOffer ? 'disabled title="Set by lot offer"' : ''}>
@@ -877,7 +915,7 @@ screens.purchase = () => {
     ${P.lotOffer ? '<p class="small muted">Per-coin costs are split from your lot offer by expected sale value.</p>' : ''}
   </div>
 
-  <button class="btn-primary btn-wide" data-a="scan">Add more coins</button>
+  <div class="grid2"><button class="btn-primary" data-a="scan">Scan a coin</button><button class="btn-ghost" data-a="go" data-s="quick">+ Quick add</button></div>
   ${S.confirmClear
     ? `<div class="confirmbox"><b>Start a new purchase?</b><span class="small">This clears the ${T.count} coins in Purchase #${P.no}.</span>
        <div class="grid2"><button class="btn-ghost" data-a="cancelClear">Keep</button><button class="btn-primary" data-a="doClear" style="background:var(--bad);color:#fff">Clear</button></div></div>`
@@ -887,8 +925,8 @@ screens.purchase = () => {
 function lotTotals() {
   const P = S.purchase;
   const rows = P.items.map((it) => {
-    const coin = it.coin || coinById(it.coinId);
-    const a = analyze(coin, it.grades, it.confirmed, '', null, it.expSale);
+    const coin = it.quick ? quickCoin(it.quick) : (it.coin || coinById(it.coinId));
+    const a = analyze(coin, it.grades || ['ANY'], it.confirmed !== false, '', null, it.expSale);
     return { ...it, coin, a };
   });
   const defMargin = (() => {
@@ -900,8 +938,8 @@ function lotTotals() {
   const items = rows.map((r) => ({
     cost: r.cost, low: r.a.range ? r.a.range.low : 0, high: r.a.range ? r.a.range.high : 0,
     mid: r.a.range ? r.a.range.mid : 0, melt: r.a.melt, liquidity: r.a.liq ? r.a.liq.score : null, targetBase: r.a.targetBase,
-    coin: r.coin, thumb: r.thumb, gradeTxt: gradeLabel(r.coin, r.a.grades) + (r.coin.skipGrade || r.confirmed ? '' : ' (suggested)'),
-    liqLabel: r.a.liq ? r.a.liq.label : 'No sales data',
+    coin: r.coin, thumb: r.thumb, gradeTxt: r.coin.source === 'quick' ? 'Melt-priced' : gradeLabel(r.coin, r.a.grades) + (r.coin.skipGrade || r.confirmed ? '' : ' (suggested)'),
+    liqLabel: r.a.liq ? r.a.liq.label : '',
   }));
   const T = purchaseTotals(items, margin, parseFloat(P.lotOffer) || 0);
   return { ...T, margin };
@@ -924,6 +962,135 @@ function lotCalcInner(T) {
     </div>`;
 }
 
+/* ---------- Create listing ---------- */
+function listingPrice(a) {
+  if (!a.range) return '';
+  const p = a.range.source === 'dealer' ? a.range.mid : a.range.high; // list near the top of the market range
+  return p ? (p >= 20 ? Math.round(p) : p.toFixed(2)) : '';
+}
+function specsText(o) { return Object.entries(o || {}).map(([k, v]) => `${k}: ${v}`).join('\n'); }
+
+screens.listing = () => {
+  const L = S.listing || {};
+  const c = S.coin;
+  if (L.loading) return `
+    <div class="topbar"><button class="back" data-a="go" data-s="money">Back</button></div>
+    <div class="spinner" role="status" aria-label="Writing listing"></div>
+    <h2 style="text-align:center">Writing the listing…</h2>
+    <p class="muted small" style="text-align:center">Uses the details you confirmed. Usually 5–10 seconds.</p>`;
+  if (L.error) return `
+    <div class="topbar"><button class="back" data-a="go" data-s="money">Back</button></div>
+    <h2>Couldn't write the listing</h2><p class="muted">${esc(L.error)}</p>
+    <button class="btn-primary btn-wide" data-a="listing">Try again</button>`;
+  const footer = store.get('cs.footer', '');
+  const fullDesc = (L.description || '') + (footer ? '\n\n' + footer : '');
+  return `
+  <div class="topbar"><button class="back" data-a="go" data-s="money">Back</button><button class="btn-link" data-a="listingRedo">Rewrite</button></div>
+  <p class="eyebrow">Listing draft · review before posting</p>
+  <h2>${esc(c.name)}</h2>
+  <div class="card">
+    <div class="row between"><span class="eyebrow">Title</span><span class="small muted" id="tcount">${(L.title || '').length}/80</span></div>
+    <input id="lt" type="text" maxlength="80" value="${esc(L.title || '')}">
+    <button class="btn-ghost" data-a="copy" data-what="title">Copy title</button>
+  </div>
+  <div class="card">
+    <span class="eyebrow">Price (your call)</span>
+    <input id="lp" type="number" inputmode="decimal" value="${esc(L.price || '')}">
+    <span class="small muted">Starts near the top of the market range. Adjust for your channel.</span>
+  </div>
+  <div class="card">
+    <span class="eyebrow">Item specifics</span>
+    <textarea id="ls" rows="7" style="font:inherit;width:100%;padding:12px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--ink)">${esc(specsText(L.item_specifics))}</textarea>
+    <button class="btn-ghost" data-a="copy" data-what="specs">Copy item specifics</button>
+  </div>
+  <div class="card">
+    <span class="eyebrow">Description</span>
+    <textarea id="ld" rows="9" style="font:inherit;width:100%;padding:12px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--ink)">${esc(fullDesc)}</textarea>
+    <button class="btn-ghost" data-a="copy" data-what="desc">Copy description</button>
+    ${footer ? '' : '<span class="small muted">Tip: add your shipping and returns text once in Margins &amp; spot, and it is added to every listing.</span>'}
+  </div>
+  <button class="btn-primary btn-wide" data-a="copy" data-what="all">Copy all</button>
+  ${S.copied ? `<div class="toast">Copied ${esc(S.copied)}</div>` : ''}`;
+};
+
+async function makeListing() {
+  const c = S.coin;
+  const a = analyze(c, S.grades, S.confirmed, S.cost, null, S.expSale);
+  S.listing = { loading: true }; S.copied = ''; go('listing');
+  const payload = {
+    name: c.name, country: c.country, denomination: c.denomination, year: c.year, mint: c.mint,
+    variety: c.gsVariety != null && c.gsVarieties ? c.gsVarieties[c.gsVariety].name : null,
+    km: c.km, composition: c.composition, fineness: c.fineness, weight: c.weight, diameter: c.diameter,
+    asw: c.asw, agw: c.agw, slab: c.slab || null, bullion: !!c.skipGrade,
+    grade: c.slab ? null : (c.skipGrade ? null : (a.confirmed ? gradeLabel(c, a.grades) + ' (raw, seller\'s opinion)' : null)),
+  };
+  try {
+    const res = await fetch('/api/listing', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Access-Code': store.get('cs.code', '') },
+      body: JSON.stringify({ coin: payload }),
+    });
+    const j = await res.json().catch(() => null);
+    if (!res.ok || !j || !j.title) throw new Error(j && j.detail ? j.detail : 'The listing service returned an error.');
+    S.listing = { ...j, price: listingPrice(a) };
+  } catch (e) {
+    S.listing = { error: String(e.message || e) + ' Check your connection and try again.' };
+  }
+  if (S.screen === 'listing') render();
+}
+
+function copyText(text, label) {
+  const done = () => { S.copied = label; render(); setTimeout(() => { S.copied = ''; if (S.screen === 'listing') render(); }, 1800); };
+  const fallback = () => {
+    const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); done(); } catch (_) {} ta.remove();
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, fallback); else fallback();
+}
+
+/* ---------- Quick add (bullion & junk silver, priced from melt) ---------- */
+const QUICK = [
+  { id: 'ase', label: 'American Silver Eagle 1 oz', asw: 1, unit: 'coins' },
+  { id: 'libertad', label: 'Mexico Libertad 1 oz silver', asw: 1, unit: 'coins' },
+  { id: 'maple', label: 'Canadian Maple Leaf 1 oz silver', asw: 1, unit: 'coins' },
+  { id: 'britannia', label: 'Britannia 1 oz silver', asw: 1, unit: 'coins' },
+  { id: 'round', label: 'Generic silver round 1 oz', asw: 1, unit: 'rounds' },
+  { id: 'bar10', label: 'Silver bar 10 oz', asw: 10, unit: 'bars' },
+  { id: 'junk90', label: '90% US silver', asw: 0.715, unit: 'dollars face value' },
+  { id: 'k40', label: '40% Kennedy half (1965–70)', asw: 0.1479, unit: 'coins' },
+  { id: 'war', label: 'War nickel (1942–45)', asw: 0.05626, unit: 'coins' },
+  { id: 'age', label: 'American Gold Eagle 1 oz', agw: 1, unit: 'coins' },
+  { id: 'krug', label: 'Krugerrand 1 oz', agw: 1, unit: 'coins' },
+  { id: 'mx50', label: 'Mexico 50 Pesos gold', agw: 1.2057, unit: 'coins' },
+];
+function quickCoin(q) {
+  const p = QUICK.find((x) => x.id === q.id) || QUICK[0];
+  const n = +q.qty || 0;
+  return { source: 'quick', id: 'q-' + p.id, name: `${n} × ${p.label}${p.id === 'junk90' ? ' ($ face)' : ''}`,
+    asw: p.asw ? p.asw * n : null, agw: p.agw ? p.agw * n : null, skipGrade: true, gradeSensitive: false, sales: [], cpg: {}, uncertain: [] };
+}
+
+screens.quick = () => {
+  const Q = S.quick || (S.quick = { id: 'junk90', qty: '', pct: Math.round((1 - S.settings.marginBullion) * 100) });
+  const p = QUICK.find((x) => x.id === Q.id);
+  const m = (+Q.qty > 0) ? melt(quickCoin(Q), spot()) : 0;
+  const offer = m * (+Q.pct || 0) / 100;
+  return `
+  <div class="topbar"><button class="back" data-a="go" data-s="purchase">Back</button><span class="small muted">Spot: ${esc(spot().asOf)}</span></div>
+  <h2>Quick add</h2>
+  <p class="muted small">For bullion and junk silver. Priced from melt, no photos needed.</p>
+  <div class="list">${QUICK.map((x) => `<button data-a="quickPick" data-id="${x.id}" style="${x.id === Q.id ? 'border-color:var(--accent);background:var(--accent-soft)' : ''}"><span>${esc(x.label)}</span><span class="small muted">${x.asw ? x.asw + ' oz Ag' : x.agw + ' oz Au'}${x.id === 'junk90' ? ' per $1' : ''}</span></button>`).join('')}</div>
+  <div class="card">
+    <label class="field" for="qq">How many ${esc(p.unit)}?<input id="qq" type="number" inputmode="decimal" min="0" value="${esc(Q.qty)}"></label>
+    <label class="field" for="qp">Buy at % of melt<input id="qp" type="number" inputmode="decimal" min="0" max="200" value="${esc(Q.pct)}"></label>
+    <div class="grid2" id="qcalc">${quickCalc(m, offer)}</div>
+  </div>
+  <button class="btn-primary btn-wide" data-a="quickAdd" ${m > 0 ? '' : 'disabled'} id="qadd">Add to purchase</button>`;
+};
+function quickCalc(m, offer) {
+  return `<div class="tile"><span class="eyebrow">Melt</span><b class="num">${money(m)}</b></div>
+    <div class="tile"><span class="eyebrow">Your offer</span><b class="num">${money(offer)}</b></div>`;
+}
+
 screens.settings = () => `
   <div class="topbar"><button class="back" data-a="back">Back</button></div>
   <h2>Margins &amp; spot</h2>
@@ -941,6 +1108,10 @@ screens.settings = () => `
     <p class="small muted">${spot().live ? 'Updates automatically every 10 minutes. Editing here overrides it until the next update.' : esc(S.spotError || 'Live spot loads from metals.dev when the key is set in Vercel.')}</p>
   </div>
   <div class="card">
+    <label class="field" for="foot">Listing footer (optional)<textarea id="foot" rows="4" style="font:inherit;width:100%;padding:12px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--ink)" placeholder="Shipping, returns, combined shipping…">${esc(store.get('cs.footer', ''))}</textarea></label>
+    <p class="small muted">Added to the end of every listing description.</p>
+  </div>
+  <div class="card">
     <label class="field" for="adm">Owner code (optional)<input id="adm" type="text" autocomplete="off" autocapitalize="off" value="${esc(store.get('cs.admin', ''))}"></label>
     <p class="small muted">Your admin code. On this phone only, it shows Greysheet wholesale values. Never give it to testers.</p>
   </div>
@@ -952,7 +1123,7 @@ function render() {
   document.getElementById('app').innerHTML = screens[S.screen]();
   const bar = document.getElementById('pbar');
   const n = S.purchase.items.length;
-  const showBar = n && !['purchase', 'capture', 'identifying', 'settings'].includes(S.screen);
+  const showBar = n && !['purchase', 'capture', 'identifying', 'settings', 'listing', 'quick'].includes(S.screen);
   bar.hidden = !showBar;
   if (showBar) {
     const T = lotTotals();
@@ -1358,6 +1529,25 @@ document.addEventListener('click', (e) => {
     S.coin.cpg = v.cpg; S.coin.cpgRange = v.cpgRange; S.coin.grey = v.grey;
     return render();
   }
+  if (a === 'listing') return makeListing();
+  if (a === 'listingRedo') return makeListing();
+  if (a === 'copy') {
+    const val = (id) => (document.getElementById(id) || {}).value || '';
+    const title = val('lt'), desc = val('ld'), specs = val('ls'), price = val('lp');
+    Object.assign(S.listing, { title, price });
+    const what = t.dataset.what;
+    if (what === 'title') return copyText(title, 'title');
+    if (what === 'specs') return copyText(specs, 'item specifics');
+    if (what === 'desc') return copyText(desc, 'description');
+    return copyText(`${title}\n\nPrice: $${price}\n\n${specs}\n\n${desc}`, 'listing');
+  }
+  if (a === 'quickPick') { S.quick = { ...(S.quick || {}), id: t.dataset.id }; return render(); }
+  if (a === 'quickAdd') {
+    const Q = S.quick; const m = melt(quickCoin(Q), spot());
+    if (!(m > 0)) return;
+    S.purchase.items.push({ quick: { id: Q.id, qty: +Q.qty }, grades: ['ANY'], confirmed: true, cost: Math.round(m * (+Q.pct || 0)) / 100 });
+    save(); S.quick = { ...Q, qty: '' }; return go('purchase');
+  }
   if (a === 'removeItem') { S.purchase.items.splice(+t.dataset.i, 1); save(); return render(); }
   if (a === 'askClear') { S.confirmClear = true; return render(); }
   if (a === 'cancelClear') { S.confirmClear = false; return render(); }
@@ -1370,9 +1560,12 @@ document.addEventListener('click', (e) => {
     if (v('sg') > 0) S.settings.spot.gold = v('sg');
     S.settings.spot.asOf = 'Sample spot, edited';
     const admEl = document.getElementById('adm'); if (admEl) store.set('cs.admin', admEl.value.trim());
+    const footEl = document.getElementById('foot'); if (footEl) store.set('cs.footer', footEl.value.trim());
     save(); return go(prevScreen);
   }
 });
+
+document.addEventListener('toggle', (e) => { if (e.target && e.target.id === 'more') S.moreOpen = e.target.open; }, true);
 
 document.addEventListener('input', (e) => {
   const el = e.target;
@@ -1383,10 +1576,18 @@ document.addEventListener('input', (e) => {
     const calc = document.getElementById('calc');
     const pos = el.selectionStart;
     calc.innerHTML = calcInner(S.coin, a);
-    const ab = document.getElementById('addBtn'); if (ab) ab.disabled = a.hideTarget && !a.cost;
+    const ab = document.getElementById('addBtn'); if (ab) ab.disabled = (a.hideTarget || a.targetBuy == null) && !a.cost;
     const ni = document.getElementById('cost'); ni.focus(); try { ni.setSelectionRange(pos, pos); } catch (_) {}
     return;
   }
+  if (el.id === 'qq' || el.id === 'qp') {
+    S.quick[el.id === 'qq' ? 'qty' : 'pct'] = el.value;
+    const m = (+S.quick.qty > 0) ? melt(quickCoin(S.quick), spot()) : 0;
+    document.getElementById('qcalc').innerHTML = quickCalc(m, m * (+S.quick.pct || 0) / 100);
+    document.getElementById('qadd').disabled = !(m > 0);
+    return;
+  }
+  if (el.id === 'lt') { const tc = document.getElementById('tcount'); if (tc) tc.textContent = el.value.length + '/80'; return; }
   if (el.id === 'expsale') {
     S.expSale = el.value;
     return;
