@@ -11,12 +11,12 @@ import { insertScan, uploadPhoto, loggingOn } from '../lib/log.js';
 const MODEL = process.env.CLAUDE_MODEL || 'claude-sonnet-5-5';
 const MAX_IMAGE_B64 = 3_000_000; // ~2.2 MB per photo after JPEG re-encode
 
-const buildPrompt = (hints, n) => `You are an expert numismatist helping a coin dealer identify a coin at a coin show.
+const buildPrompt = (hints, n, spot) => `You are an expert numismatist helping a coin dealer identify a coin at a coin show.
 ${n >= 2 ? 'Image 1 is the obverse (front); image 2 is the reverse (back).' : n === 1 ? 'The image shows one side of the coin.' : 'No photos: identify from the dealer\'s details only.'}
 The coin may be raw or in a PCGS, NGC, ANACS or other slab. If slabbed, read the label: service, grade, cert number, label text.
 
 Read every legend, the date and the mint mark carefully. Check where the mint mark sits for this series (for example, Morgan dollars: reverse, below the wreath). Never invent a mint mark you cannot see. If no mint mark is visible where the series would show one, use "None". If you cannot read something, list it in uncertain_fields and lower your confidence. Prefer an honest "Low" over a confident wrong answer.
-${hints ? '\nThe dealer has corrected or supplied these details; treat them as correct unless the photos clearly contradict them:\n' + hints + '\n' : ''}
+${spot ? `Today's spot prices: silver $${spot.silver}/oz, gold $${spot.gold}/oz. Precious metals have risen a lot recently, so older price memories run low: a silver or gold coin's rough_value_usd must never be below its melt value at today's spot.\n` : ''}${hints ? '\nThe dealer has corrected or supplied these details; treat them as correct unless the photos clearly contradict them:\n' + hints + '\n' : ''}
 Reply with only this JSON object:
 {
  "identified": true,
@@ -81,6 +81,8 @@ export default async function handler(req, res) {
   if (images.some((x) => x.length > MAX_IMAGE_B64)) return res.status(413).json({ error: 'image_rejected' });
 
   const tester = String(req.headers['x-tester'] || '').slice(0, 60);
+  const sp = body.spot || {};
+  const spot = +sp.silver > 0 && +sp.gold > 0 ? { silver: Math.round(+sp.silver * 100) / 100, gold: Math.round(+sp.gold) } : null;
   const fast = req.headers['x-fast'] === '1';
   const model = fast ? (process.env.FAST_MODEL || 'claude-haiku-4-5-20251001') : MODEL;
   const t0 = Date.now();
@@ -99,7 +101,7 @@ export default async function handler(req, res) {
 
   const content = [
     ...images.map((data) => ({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data } })),
-    { type: 'text', text: buildPrompt(hints, images.length) },
+    { type: 'text', text: buildPrompt(hints, images.length, spot) },
   ];
 
   let r;

@@ -941,7 +941,10 @@ function priceCheck(c, a) {
   if (!a.range || a.limited || a.range.source === 'dealer' || !c.aiValue) return '';
   const parts = a.grades.map((k) => c.aiValue[k]).filter((v) => Array.isArray(v) && v.length === 2 && v[1] > 0);
   if (!parts.length) return '';
-  const lo = Math.min(...parts.map((p) => +p[0])), hi = Math.max(...parts.map((p) => +p[1]));
+  const rawHi = Math.max(...parts.map((p) => +p[1]));
+  // Claude's price memory can predate today's silver and gold prices; an estimate under melt is stale, not a signal.
+  if (a.melt > 0 && rawHi < a.melt) return '';
+  const lo = Math.max(Math.min(...parts.map((p) => +p[0])), a.melt || 0), hi = Math.max(rawHi, a.melt || 0);
   const src = a.range.source === 'cpg' ? 'CPG' : 'Numista';
   const input = '';
   if (lo > a.range.high * 1.4) return `<div class="feas warn"><b>Prices disagree: this date may be worth more</b>
@@ -1578,7 +1581,7 @@ function sendFeedback(patch) {
   }).catch(() => {});
 }
 async function serverJson(hints, images, signal) {
-  const payload = { hints: hints || '', images: await Promise.all(images.map(blobToBase64)) };
+  const payload = { hints: hints || '', images: await Promise.all(images.map(blobToBase64)), spot: { silver: spot().silver, gold: spot().gold } };
   const res = await fetch('/api/identify', {
     method: 'POST', signal,
     headers: { 'Content-Type': 'application/json', 'X-Access-Code': store.get('cs.code', ''), 'X-Tester': store.get('cs.tester', ''), ...(store.get('cs.fast', false) ? { 'X-Fast': '1' } : {}) },
