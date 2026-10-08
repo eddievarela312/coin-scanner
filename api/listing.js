@@ -46,7 +46,7 @@ Reply with only JSON: {"title": "...", "item_specifics": {...}, "description": "
       },
       body: JSON.stringify({ model: MODEL(), max_tokens: 1200, messages: [{ role: 'user', content: prompt }] }),
     });
-    if (!r.ok) return res.status(502).json({ error: 'upstream_error', detail: `Claude ${r.status}` });
+    if (!r.ok) return res.status(502).json({ error: 'upstream_error', detail: `Listing service returned ${r.status}` });
     const out = await r.json();
     const text = (out.content || []).filter((x) => x.type === 'text').map((x) => x.text).join('');
     const j = extractJson(text);

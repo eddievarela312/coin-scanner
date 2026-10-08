@@ -119,7 +119,7 @@ export default async function handler(req, res) {
       body: JSON.stringify({ model, max_tokens: 2000, messages: [{ role: 'user', content }] }),
     });
   } catch (e) {
-    const detail = 'Could not reach Claude: ' + String(e && e.message || e);
+    const detail = 'Could not reach the identification service: ' + String(e && e.message || e);
     await log({ error: detail });
     return res.status(502).json({ error: 'upstream_error', detail });
   }
@@ -131,7 +131,7 @@ export default async function handler(req, res) {
     try { detail = JSON.parse(raw).error.message; } catch (_) {}
     await log({ error: `Claude ${r.status}: ${detail}` });
     if (/credit balance/i.test(detail)) return res.status(402).json({ error: 'no_credit', detail });
-    return res.status(502).json({ error: 'upstream_error', detail: `Claude returned ${r.status}: ${detail}` });
+    return res.status(502).json({ error: 'upstream_error', detail: `Identification service returned ${r.status}: ${detail}` });
   }
 
   const out = await r.json();
