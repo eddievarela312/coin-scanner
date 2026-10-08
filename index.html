@@ -152,6 +152,28 @@ tr.hl td{background:var(--accent-soft)}
 .lotpick button:last-child{border-bottom:0}
 .lotpick .ln{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .lotpick .lp{color:var(--accent);font-size:1.2rem}
+.tour{display:flex;flex-direction:column;gap:16px;min-height:calc(100vh - 60px)}
+.tour .stage{background:var(--sunk);border-radius:20px;padding:18px;display:flex;justify-content:center;touch-action:pan-y}
+.mock{width:250px;background:var(--bg);border:6px solid var(--ink);border-radius:28px;padding:14px 12px;display:flex;flex-direction:column;gap:8px;box-shadow:0 10px 30px rgba(0,0,0,.25);font-size:.72rem;min-height:300px}
+.mock .mh{font-family:var(--f-display);font-weight:700;font-size:.95rem;line-height:1.15}
+.mock .mc{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:8px}
+.mock .me{font-size:.56rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:700}
+.mock .mv{font-family:var(--f-display);font-weight:700;font-size:1.15rem}
+.mock .mb{border-radius:9px;padding:8px;text-align:center;font-weight:700;border:1px solid var(--line)}
+.mock .mb.p{background:var(--accent);color:#fff;border-color:var(--accent)}
+.mock .mb.o{border:1.5px solid var(--accent);color:var(--accent);display:flex;justify-content:space-between}
+.mock .m2{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.mock .ring{width:150px;height:150px;border-radius:50%;border:2px dashed var(--accent);margin:8px auto;display:grid;place-items:center}
+.mock .coin{width:118px;height:118px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#f4e3b5,#b8892e 70%,#7a5a1c);box-shadow:inset 0 0 0 6px rgba(0,0,0,.15);display:grid;place-items:center;color:#5a3f10;font-family:var(--f-display);font-weight:700;font-size:1.3rem}
+.mock .note{border-radius:9px;padding:7px 9px;background:var(--accent);color:#fff;font-weight:700;display:flex;justify-content:space-between}
+.mock .muted{color:var(--muted)}
+.mock .hl{outline:3px solid var(--accent);outline-offset:3px;animation:tourpulse 1.6s ease-in-out infinite}
+@keyframes tourpulse{0%,100%{outline-color:var(--accent)}50%{outline-color:transparent}}
+.tour .dots{display:flex;gap:6px;justify-content:center}
+.tour .dots span{width:8px;height:8px;border-radius:50%;background:var(--line)}
+.tour .dots span.on{background:var(--accent);width:22px;border-radius:4px}
+.tourcta{display:flex;align-items:center;gap:12px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px 14px;color:var(--ink);text-align:left;font-weight:400;width:100%}
+.tourcta b{display:block}
 .confirmbox{border:1px solid var(--bad);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:10px}
 </style>
 
@@ -650,6 +672,40 @@ function analyze(coin, grades, confirmed, costInput, marginOverride, expSale) {
 /* ---------- screens ---------- */
 const screens = {};
 
+/* ---------- Visual tour (optional, from Home) ---------- */
+const TOUR = [
+  { t: 'Snap the front and back', d: 'Tap Scan a coin, fill the circle with the coin, then flip it over. No typing.',
+    m: `<div class="mh">Photograph the front</div><span class="muted">Step 1 of 2</span><div class="ring"><div class="coin">1921</div></div><span class="muted" style="text-align:center">Tap to take a photo</span>` },
+  { t: 'Claude names the coin', d: 'About 10–20 seconds. If it\'s right, tap Yes. If not, pick another match or fix the details.',
+    m: `<span class="me">Match found · 12s</span><div class="mh">1921-S Morgan Dollar</div><div style="display:flex;gap:6px"><div class="coin" style="width:52px;height:52px;font-size:.6rem">obv</div><div class="coin" style="width:52px;height:52px;font-size:.6rem">rev</div></div><span class="muted">Numista N# 1492 · KM# 110</span><div class="mb p hl">Yes, this is it</div><div class="mb">Not my coin</div>` },
+  { t: 'See what it\'s worth, and what to pay', d: 'Market value with its source, and your target buy at your margin. Key dates and other alerts appear as one line you can tap.',
+    m: `<div class="mh">1918-Mo Mexico 1 Peso</div><div class="note"><span>🔑 Semi-key date</span><span>›</span></div><div class="m2"><div class="mc hl"><div class="me">Market</div><div class="mv">$180–260</div><span class="muted">CPG retail</span></div><div class="mc hl"><div class="me">Target buy</div><div class="mv">$135</div><span class="muted">25% margin</span></div></div><span><span class="muted">Melt</span> <b>$27</b> · <span class="muted">CPG</span> <b>$260</b></span>` },
+  { t: 'Check real sold comps', d: 'One tap opens eBay\'s sold listings for that exact coin. If comps say something different, enter the price and the target buy updates.',
+    m: `<div class="m2"><div class="mc"><div class="me">Market</div><div class="mv">$180–260</div></div><div class="mc"><div class="me">Target buy</div><div class="mv">$135</div></div></div><div class="mb o hl"><span>See eBay sold comps</span><span>↗</span></div><span style="color:var(--accent);font-weight:700">Comps say something different? Enter the price ›</span>` },
+  { t: 'Buy it, save it, or pass', d: 'Bought it: one coin, done. Save to a lot: several coins from one table or seller. Pass: move on. Every scan is kept in Recent scans.',
+    m: `<div class="m2"><div class="mc"><div class="me">Market</div><div class="mv">$180–260</div></div><div class="mc"><div class="me">Target buy</div><div class="mv">$135</div></div></div><div class="m2 hl" style="border-radius:9px"><div class="mb p">Bought it</div><div class="mb">Save to a lot</div></div><div class="mb">Pass · scan next coin</div>` },
+  { t: 'Working a table? Build a lot', d: 'After the first coin, every scan offers + Add to that lot in one tap. Type what the seller is asking and the app says Buy, Counter, or Too high.',
+    m: `<div class="mh">Table 412 Mike</div><span class="muted">6 coins in offer · market $1,450–1,700</span><div class="m2"><div class="mc"><div class="me">Your max offer</div><div class="mv">$1,050</div></div><div class="mc hl"><div class="me">Seller asking</div><div class="mv">$1,200</div></div></div><div class="mc" style="background:var(--warn-soft);border-color:var(--warn)"><b>Counter at $1,050</b><br><span class="muted">At their price you'd still make ~$280</span></div>` },
+  { t: 'Bought it? The listing writes itself', d: 'Create listing drafts an eBay title, item specifics and description from what you confirmed. Edit, then copy.',
+    m: `<span class="me">Listing draft</span><div class="mc"><div class="me">Title</div><b>1918-Mo Mexico Peso KM#454 Silver XF</b></div><div class="mc"><div class="me">Item specifics</div><span class="muted">Country: Mexico<br>Year: 1918 · Mint: Mexico City<br>Composition: Silver</span></div><div class="mb p hl">Copy all</div>` },
+];
+screens.tour = () => {
+  const i = Math.max(0, Math.min(TOUR.length - 1, S.tourStep || 0));
+  const st = TOUR[i];
+  const last = i === TOUR.length - 1;
+  return `<div class="tour">
+    <div class="topbar"><button class="back" data-a="tourEnd">Close</button><span class="small muted">${i + 1} of ${TOUR.length}</span></div>
+    <div class="stage" id="tourstage"><div class="mock" aria-hidden="true">${st.m}</div></div>
+    <div class="dots">${TOUR.map((_, k) => `<span class="${k === i ? 'on' : ''}"></span>`).join('')}</div>
+    <div class="stack" style="gap:6px"><h2>${st.t}</h2><p class="muted" style="margin:0">${st.d}</p></div>
+    <div class="grid2" style="margin-top:auto">
+      <button class="btn-ghost" data-a="tourGo" data-v="${i - 1}" ${i === 0 ? 'disabled' : ''}>Back</button>
+      ${last ? '<button class="btn-primary" data-a="tourDone">Scan my first coin</button>' : `<button class="btn-primary" data-a="tourGo" data-v="${i + 1}">Next</button>`}
+    </div>
+    ${last ? '' : '<button class="btn-link small" data-a="tourEnd" style="align-self:center">Skip the tour</button>'}
+  </div>`;
+};
+
 screens.home = () => {
   const recent = S.history.slice(0, 4);
   return `
@@ -664,16 +720,11 @@ screens.home = () => {
     <button class="btn-ghost" data-a="go" data-s="lots">Lots &amp; buys${S.lots.filter((l) => l.items.length).length ? ` (${S.lots.filter((l) => l.items.length).length})` : ''}</button>
     <button class="btn-ghost" data-a="go" data-s="settings">Margins &amp; spot</button>
   </div>
-  ${recent.length ? '' : `<div class="howto" aria-label="How it works">
-    <div><b>1</b><span class="small">Photo front &amp; back</span></div>
-    <div><b>2</b><span class="small">Confirm the coin</span></div>
-    <div><b>3</b><span class="small">See value &amp; comps</span></div>
-    <div><b>4</b><span class="small">Buy, save or pass</span></div>
-  </div>`}
+  ${recent.length ? '' : `<button class="tourcta" data-a="tourStart"><span style="font-size:1.6rem" aria-hidden="true">▶</span><span><b>New here? Take the 30-second tour</b><span class="small muted">See how scanning, pricing and lots work</span></span></button>`}
   ${recent.length ? `<div class="card"><div class="row between"><span class="eyebrow">Recent scans</span><button class="btn-link small" data-a="go" data-s="history">All ›</button></div>
     ${recent.map((h) => histRow(h)).join('')}</div>` : ''}
   <p class="small muted">Spot: silver ${money(spot().silver)} · gold ${money(spot().gold)} (${esc(spot().asOf)})</p>
-  <button class="btn-link small" data-a="demo">Try the sample coins</button>`;
+  <div class="row between"><button class="btn-link small" data-a="tourStart">How it works</button><button class="btn-link small" data-a="demo">Try the sample coins</button></div>`;
 };
 
 function histRow(h) {
@@ -1922,6 +1973,10 @@ document.addEventListener('click', (e) => {
     lot.updated = Date.now(); S.purchase = lot; S.sheet = ''; S.paid = null; S.newLotName = '';
     save(); return render();
   }
+  if (a === 'tourStart') { S.tourStep = 0; return go('tour'); }
+  if (a === 'tourGo') { S.tourStep = +t.dataset.v; return render(); }
+  if (a === 'tourEnd') { store.set('cs.toured', true); return go('home'); }
+  if (a === 'tourDone') { store.set('cs.toured', true); Object.assign(S, { photos: {}, files: {}, coin: null, fields: null, ai: null, cost: '', expSale: '', added: false, sheet: '', feedback: null }); return go('capture'); }
   if (a === 'useSuggested') { S.paid = t.dataset.v; const el = document.getElementById('paid'); if (el) el.value = t.dataset.v; return; }
   if (a === 'quickLot') {
     const lot = S.lots.find((l) => l.id === S.sessionLot); if (!lot) return;
@@ -2004,6 +2059,16 @@ document.addEventListener('click', (e) => {
   }
 });
 
+// Swipe left/right on the tour illustration.
+let tourX = null;
+document.addEventListener('touchstart', (e) => { if (S.screen === 'tour' && e.target.closest('#tourstage')) tourX = e.touches[0].clientX; }, { passive: true });
+document.addEventListener('touchend', (e) => {
+  if (tourX == null || S.screen !== 'tour') return;
+  const dx = e.changedTouches[0].clientX - tourX; tourX = null;
+  if (Math.abs(dx) < 40) return;
+  const n = (S.tourStep || 0) + (dx < 0 ? 1 : -1);
+  if (n >= 0 && n < TOUR.length) { S.tourStep = n; render(); }
+}, { passive: true });
 document.addEventListener('toggle', (e) => { if (e.target && e.target.id === 'more') S.moreOpen = e.target.open; if (e.target && e.target.id === 'lotmore') S.lotMoreOpen = e.target.open; }, true);
 
 document.addEventListener('input', (e) => {
