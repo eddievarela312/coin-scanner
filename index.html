@@ -147,6 +147,11 @@ tr.hl td{background:var(--accent-soft)}
 .note[open] .nc{transform:rotate(90deg)}
 .note .nb{padding:0 12px 12px 40px;display:flex;flex-direction:column;gap:6px;font-size:.88rem}
 .notes{display:flex;flex-direction:column;gap:8px}
+.lotpick{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.lotpick button{display:flex;align-items:center;gap:10px;min-height:46px;padding:8px 12px;border:0;border-bottom:1px solid var(--line);border-radius:0;background:transparent;color:var(--ink);font-weight:600;text-align:left}
+.lotpick button:last-child{border-bottom:0}
+.lotpick .ln{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lotpick .lp{color:var(--accent);font-size:1.2rem}
 .confirmbox{border:1px solid var(--bad);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:10px}
 </style>
 
@@ -779,7 +784,10 @@ screens.fields = () => {
   <div class="thumbs">${['obv', 'rev'].map((s) => S.photos[s] ? `<img src="${S.photos[s]}" alt="">` : `<div class="ph">${s === 'obv' ? 'Front' : 'Back'}</div>`).join('')}</div>
   <h2>Here's what we read</h2>
   <p class="muted" style="margin-top:-8px">Check these against the coin. Fix anything that's off.</p>
-  <div class="stack">${field('country', 'Country')}${field('denomination', 'Denomination')}${field('year', 'Year')}${field('mint', 'Mint mark')}</div>
+  ${c.countermark ? `<p class="small" style="margin:0"><b>Countermarked coin.</b> Host coin: ${esc(c.countermark.host || 'see below')}</p>` : ''}
+  <div class="stack">${c.countermark
+    ? field('country', 'Countermark country') + field('year', 'Countermark year') + field('denomination', 'Host coin denomination') + field('mint', 'Host coin mint')
+    : field('country', 'Country') + field('denomination', 'Denomination') + field('year', 'Year') + field('mint', 'Mint mark')}</div>
   <button class="btn-primary btn-wide" data-a="toMatch" id="fieldsGo">${fieldsEdited() || S.manual ? 'Search with my changes' : 'Looks right, continue'}</button>
   <p class="small muted">If you change something, we re-check the coin with your corrections.</p>`;
 };
@@ -1013,7 +1021,9 @@ function actionArea(a) {
   }
   if (S.sheet === 'bought') return `<div class="sheet">
       <b>Bought it</b>
-      ${priceField('What did you pay?')}
+      <label class="field" for="paid">What did you actually pay?
+        <input id="paid" type="number" inputmode="decimal" min="0" step="0.01" placeholder="$" value="${esc(S.paid ?? '')}"></label>
+      ${defPrice != null ? `<button class="btn-link small" data-a="useSuggested" data-v="${defPrice}" style="padding:0;align-self:flex-start">Use suggested buy: ${money(defPrice)}</button>` : ''}
       <button class="btn-primary btn-wide" data-a="saveBought">Save purchase</button>
       <div class="row between"><button class="btn-link small" data-a="sheet" data-v="">Cancel</button><button class="btn-link small" data-a="sheet" data-v="lot">Part of a bigger deal? Use a lot ›</button></div>
     </div>`;
@@ -1028,7 +1038,7 @@ function actionArea(a) {
       </div>
       <span class="small muted">${st === 'buy' ? 'Counts toward the lot total and your offer.' : 'Kept with the lot but left out of the total. Add it to the offer anytime.'}</span>
       ${priceField('Your price for this coin')}
-      ${lots.length ? `<span class="eyebrow">Existing lots</span><div class="list">${lots.map((l) => `<button data-a="saveToLot" data-id="${esc(l.id)}"><span style="min-width:0"><b>${esc(l.name)}</b><br><span class="small muted">${l.items.length} coin${l.items.length === 1 ? '' : 's'}${l.notes ? ' · ' + esc(l.notes.slice(0, 30)) : ''}</span></span><span aria-hidden="true">+</span></button>`).join('')}</div>` : ''}
+      ${lots.length ? `<span class="eyebrow">Existing lots</span><div class="lotpick">${lots.map((l, i) => `<button data-a="saveToLot" data-id="${esc(l.id)}"><span class="ln">${esc(l.name)}${i === 0 ? ' <span class="pill neutral" style="font-size:.66rem;padding:1px 7px">last used</span>' : ''}</span><span class="small muted">${l.items.length} coin${l.items.length === 1 ? '' : 's'}</span><span class="lp" aria-hidden="true">+</span></button>`).join('')}</div>` : ''}
       <span class="eyebrow">${lots.length ? 'Or start a new lot' : 'New lot'}</span>
       <input id="newlot" type="text" placeholder="Table # or seller, e.g. Table 412 Mike" value="${esc(S.newLotName || '')}" aria-label="New lot name">
       <button class="btn-primary btn-wide" data-a="saveToLot" data-id="new">Create lot &amp; save</button>
@@ -1896,6 +1906,7 @@ document.addEventListener('click', (e) => {
     const pv = parseFloat((document.getElementById('paid') || {}).value);
     const cost = pv >= 0 ? pv : (an.cost ?? an.targetBuy ?? (an.melt > 0 ? an.melt : 0));
     let lot;
+    if (a === 'saveBought' && !(pv >= 0)) { const el = document.getElementById('paid'); if (el) { el.focus(); el.style.borderColor = 'var(--bad)'; el.placeholder = 'Enter what you paid'; } return; }
     if (a === 'saveBought') { lot = singlesLot(); lot.items.push(itemFromCurrent(cost, 'buy')); S.added = { kind: 'bought', lot: lot.id, cost }; }
     else {
       if (t.dataset.id === 'new') {
@@ -1911,6 +1922,7 @@ document.addEventListener('click', (e) => {
     lot.updated = Date.now(); S.purchase = lot; S.sheet = ''; S.paid = null; S.newLotName = '';
     save(); return render();
   }
+  if (a === 'useSuggested') { S.paid = t.dataset.v; const el = document.getElementById('paid'); if (el) el.value = t.dataset.v; return; }
   if (a === 'quickLot') {
     const lot = S.lots.find((l) => l.id === S.sessionLot); if (!lot) return;
     const an = analyze(S.coin, S.grades, S.confirmed, S.cost, null, S.expSale);
