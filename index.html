@@ -136,6 +136,17 @@ tr.hl td{background:var(--accent-soft)}
 .howto b{font-family:var(--f-display);font-size:1.1rem;color:var(--accent)}
 .pricepair .card{gap:6px;padding:14px}
 .pp{font-family:var(--f-display);font-weight:700;font-size:1.75rem;line-height:1.05;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.note{border-radius:12px;background:var(--warn-soft);border:1px solid var(--warn);color:var(--ink)}
+.note.strong{background:var(--accent);border-color:var(--accent);color:#fff}
+.note summary{color:inherit;font-weight:400;list-style:none;display:flex;align-items:center;gap:8px;padding:10px 12px;cursor:pointer;min-height:44px}
+.note summary::-webkit-details-marker{display:none}
+.note .ni{width:20px;text-align:center}
+.note .nt{margin-left:auto;font-size:.8rem;opacity:.85}
+.note .nc{transition:transform .15s;font-size:1.1rem;margin-left:6px}
+.note:not(:has(.nt)) .nc{margin-left:auto}
+.note[open] .nc{transform:rotate(90deg)}
+.note .nb{padding:0 12px 12px 40px;display:flex;flex-direction:column;gap:6px;font-size:.88rem}
+.notes{display:flex;flex-direction:column;gap:8px}
 .confirmbox{border:1px solid var(--bad);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:10px}
 </style>
 
@@ -513,16 +524,22 @@ function rarityOf(c) {
   if (!c.skipGrade && n > 0 && n < 50000) return { level: 'lowmintage', note: `Only ${n.toLocaleString('en-US')} minted.`, check: '' };
   return null;
 }
+// Compact alert: one tappable line, details on tap.
+function note(tone, icon, title, tag, detailHtml) {
+  return `<details class="note ${tone}"><summary><span class="ni">${icon}</span><b>${title}</b>${tag ? `<span class="nt">${tag}</span>` : ''}<span class="nc" aria-hidden="true">›</span></summary><div class="nb">${detailHtml}</div></details>`;
+}
 function countermarkBanner(c) {
   if (!c || !c.countermark) return '';
   const k = c.countermark;
-  return `<div class="feas warn"><b>Countermarked coin</b><span class="small">${esc(k.description)}${k.host ? ` on ${esc(k.host)}` : ''}${k.issuer ? ` · applied by ${esc(k.issuer)}` : ''}.</span><span class="small">Catalog prices are for the plain coin underneath, so they aren't used. The countermark usually sets the value: check its authenticity and look at comps for countermarked examples.</span></div>`;
+  const usingCatalog = c.cmCatalog || CM_RE.test(c.gsName || '');
+  return note('warn', '◎', 'Countermarked', esc(k.issuer || ''), `<span>${esc(k.description)}${k.host ? ` on ${esc(k.host)}` : ''}${k.issuer ? ` · applied by ${esc(k.issuer)}` : ''}.</span>
+    <span>${usingCatalog ? 'Prices come from the catalog entry for this countermarked piece.' : 'Catalog prices for the plain coin underneath aren\'t used.'} The countermark usually sets the value: check that it's genuine and look at comps for countermarked examples.</span>`);
 }
 function rarityBanner(c) {
   const r = rarityOf(c); if (!r) return '';
   const strong = r.level === 'key' || r.level === 'semi-key';
-  return `<div class="rare ${strong ? 'strong' : ''}" role="note"><div class="row between"><b>${strong ? '🔑 ' : '⚑ '}${RARITY[r.level]}</b><span class="small">Don't sell it short</span></div>
-    ${r.note ? `<span class="small">${esc(r.note)}</span>` : ''}${r.check ? `<span class="small"><b>Check:</b> ${esc(r.check)}</span>` : ''}</div>`;
+  return note(strong ? 'strong' : 'warn', strong ? '🔑' : '⚑', RARITY[r.level], "Don't sell it short",
+    `${r.note ? `<span>${esc(r.note)}</span>` : ''}${r.check ? `<span><b>Check:</b> ${esc(r.check)}</span>` : ''}`);
 }
 
 /* ---------- scan history (on this phone) ---------- */
@@ -554,34 +571,45 @@ const tone = (status) => ({ Likely: 'good', Possible: 'warn', Unlikely: 'bad', F
 /* ---------- derived values for one coin ---------- */
 // AI-identified coins have no market data yet: value comes from the dealer's
 // expected sale price, or else Claude's rough estimate (clearly labeled).
+const CM_RE = /counter|c\/m|resell|contramarc/i;
+// Claude's per-grade estimate; if it skipped the chosen grade, use the nearest grade it did price.
+function aiParts(coin, g) {
+  const av = coin.aiValue || {};
+  const ok = (v) => Array.isArray(v) && v.length === 2 && v[1] > 0;
+  let parts = g.map((k) => av[k]).filter(ok);
+  if (parts.length) return { parts, from: null };
+  const keys = Object.keys(av).filter((k) => ok(av[k]));
+  if (!keys.length) return { parts: [], from: null };
+  const idx = (k) => (GRADES.indexOf(k) < 0 ? 99 : GRADES.indexOf(k));
+  const target = Math.min(...g.map(idx));
+  const best = keys.sort((a, b) => Math.abs(idx(a) - target) - Math.abs(idx(b) - target))[0];
+  return { parts: [av[best]], from: best };
+}
 function aiRange(coin, g, expSale) {
   const m = melt(coin, spot());
   const exp = parseFloat(expSale);
   if (exp > 0) return { low: exp, high: exp, mid: exp, basis: 'your comps number', grades: g, source: 'dealer' };
-  // Countermarked: catalog prices are for the plain host coin, which can be far off. Use the estimate and comps.
-  if (coin.countermark) {
-    const parts = g.map((k) => coin.aiValue && coin.aiValue[k]).filter((v) => Array.isArray(v) && v.length === 2 && v[1] > 0);
-    if (!parts.length) return null;
-    const lo = Math.max(Math.min(...parts.map((p) => +p[0])), m), hi = Math.max(Math.max(...parts.map((p) => +p[1])), m);
-    return { low: lo, high: hi, mid: Math.round((lo + hi) / 2 * 100) / 100, basis: 'Claude\'s rough estimate for the countermarked coin', grades: g, source: 'ai', cm: true };
-  }
-  const cpg = g.map((k) => coin.cpg && coin.cpg[k]).filter((v) => v > 0);
+  // Countermarked: only use catalog prices when the catalog entry IS the countermarked piece, not the plain host coin.
+  const cm = !!coin.countermark;
+  const cpgOk = !cm || CM_RE.test(coin.gsName || '');
+  const numOk = !cm || coin.cmCatalog;
+  const cpg = cpgOk ? g.map((k) => coin.cpg && coin.cpg[k]).filter((v) => v > 0) : [];
   if (cpg.length) {
     const lo = Math.max(Math.min(...cpg) * 0.85, m), hi = Math.max(Math.max(...cpg), m);
     const belowMelt = Math.max(...cpg) < m;
     return { low: lo, high: hi, mid: Math.round((lo + hi) / 2 * 100) / 100, basis: belowMelt ? 'melt value (CPG retail is below melt)' : 'CPG retail (85–100%), via CDN', grades: g, source: 'cpg' };
   }
-  const nv = g.map((k) => coin.numistaVal && coin.numistaVal[k]).filter((v) => v > 0);
+  const nv = numOk ? g.map((k) => coin.numistaVal && coin.numistaVal[k]).filter((v) => v > 0) : [];
   if (nv.length) {
     const lows = g.map((k) => coin.numistaLow && coin.numistaLow[k]).filter((v) => v > 0 && v < Infinity);
     const lo = Math.max(Math.min(...(lows.length ? lows : nv)), m), hi = Math.max(Math.max(...nv), m);
     return { low: lo, high: hi, mid: Math.round((lo + hi) / 2 * 100) / 100, basis: coin.varieties ? 'Numista estimates (all varieties of this year; can lag recent sales)' : 'Numista estimates (can lag recent sales)', grades: g, source: 'numista' };
   }
-  const parts = g.map((k) => coin.aiValue && coin.aiValue[k]).filter((v) => Array.isArray(v) && v.length === 2 && v[1] > 0);
+  const { parts, from } = aiParts(coin, g);
   if (!parts.length) return null;
   const low = Math.max(Math.min(...parts.map((p) => +p[0])), m);
   const high = Math.max(Math.max(...parts.map((p) => +p[1])), m);
-  return { low, high, mid: Math.round((low + high) / 2 * 100) / 100, basis: 'Claude\'s rough estimate, not market data', grades: g, source: 'ai' };
+  return { low, high, mid: Math.round((low + high) / 2 * 100) / 100, basis: `Claude's rough estimate${cm ? ' for the countermarked coin' : ''}${from ? ` (priced at ${from})` : ''}, not market data`, grades: g, source: 'ai', aiFrom: from };
 }
 
 function analyze(coin, grades, confirmed, costInput, marginOverride, expSale) {
@@ -900,7 +928,7 @@ screens.money = () => {
     <div class="card">
       <div class="row between"><span class="eyebrow">Market</span>${a.limited ? '<span class="pill warn" style="font-size:.68rem;padding:2px 8px">AI est.</span>' : ''}</div>
       <span class="pp"${a.limited ? ' style="color:var(--warn)"' : ''}>${a.range ? range$(a.range) : '—'}</span>
-      <span class="small muted">${a.limited ? "Claude's estimate, not sales data" : a.range ? `${esc(shortBasis(a.range))}${!a.confirmed ? ' · grade not confirmed' : ''}` : ''}</span>
+      <span class="small muted">${a.limited ? `Claude's estimate, not sales data${a.range && a.range.aiFrom ? ` (priced at ${a.range.aiFrom})` : ''}` : a.range ? `${esc(shortBasis(a.range))}${!a.confirmed ? ' · grade not confirmed' : ''}` : ''}</span>
     </div>
     <div class="card">
       <span class="eyebrow">Target buy</span>
@@ -914,7 +942,7 @@ screens.money = () => {
   </div>
   <div class="row" style="gap:18px;margin-top:-4px">
     <span class="small"><span class="muted">Melt</span> <b class="num">${a.melt > 0 ? money(a.melt) : 'none'}</b></span>
-    <span class="small"><span class="muted">CPG</span> ${c.countermark ? '<b>n/a for countermarks</b>' : a.cpg.length ? `<b class="num">${a.cpg.map(money).join('–')}</b> <a href="https://www.greysheet.com" target="_blank" rel="noopener" style="color:var(--accent)">via CDN</a>` : `<b>${c.lookupPending ? 'loading…' : 'not found'}</b>`}</span>
+    <span class="small"><span class="muted">CPG</span> ${c.countermark && !CM_RE.test(c.gsName || '') ? '<b>n/a for this countermark</b>' : a.cpg.length ? `<b class="num">${a.cpg.map(money).join('–')}</b> <a href="https://www.greysheet.com" target="_blank" rel="noopener" style="color:var(--accent)">via CDN</a>` : `<b>${c.lookupPending ? 'loading…' : 'not found'}</b>`}</span>
   </div>
   ${priceCheck(c, a)}
   ${compsButton(c)}
@@ -950,7 +978,7 @@ function ebayUrl(c) {
 const shortBasis = (r) => r.source === 'cpg' ? 'CPG retail, via CDN' : r.source === 'numista' ? 'Numista estimate (can lag sales)' : r.source === 'dealer' ? 'your comps price' : r.basis;
 function catalogWarning(c) {
   if (!c.catalogConflict) return '';
-  return `<div class="feas warn"><b>Catalog match ignored</b><span class="small">Numista's closest entry ("${esc(c.catalogConflict)}") doesn't match this coin's denomination, so its specs and prices aren't used. Check the coin before relying on melt.</span></div>`;
+  return note('warn', '!', 'Catalog match ignored', '', `<span>Numista's closest entry ("${esc(c.catalogConflict)}") doesn't match this coin's denomination, so its specs and prices aren't used. Check the coin before relying on melt.</span>`);
 }
 // When catalog prices and Claude's date-specific estimate disagree a lot, say so instead of hiding it.
 function priceCheck(c, a) {
@@ -963,10 +991,8 @@ function priceCheck(c, a) {
   const lo = Math.max(Math.min(...parts.map((p) => +p[0])), a.melt || 0), hi = Math.max(rawHi, a.melt || 0);
   const src = a.range.source === 'cpg' ? 'CPG' : 'Numista';
   const input = '';
-  if (lo > a.range.high * 1.4) return `<div class="feas warn"><b>Prices disagree: this date may be worth more</b>
-    <span class="small">Claude expects about ${money(lo)}–${money(hi)} for this exact date. The ${src} figure may be pricing it like a common date. Check eBay sold comps below and enter what they show.</span>${input}</div>`;
-  if (hi < a.range.low * 0.6) return `<div class="feas warn"><b>Prices disagree: this may be worth less</b>
-    <span class="small">Claude expects about ${money(lo)}–${money(hi)}, below the ${src} figure. Check eBay sold comps below before paying the target buy.</span>${input}</div>`;
+  if (lo > a.range.high * 1.4) return note('warn', '↑', 'May be worth more', 'Check comps', `<span>Claude expects about ${money(lo)}–${money(hi)} for this exact date. The ${src} figure may be pricing it like a common date. Check eBay sold comps and enter what they show.</span>`);
+  if (hi < a.range.low * 0.6) return note('warn', '↓', 'May be worth less', 'Check comps', `<span>Claude expects about ${money(lo)}–${money(hi)}, below the ${src} figure. Check eBay sold comps before paying the target buy.</span>`);
   return '';
 }
 function compsButton(c) {
@@ -1512,6 +1538,7 @@ function mergeLookup(coin, L) {
   coin.lookup = L;
   const n = L.numista;
   coin.catalogConflict = n && n.matched && catalogConflict(coin, n) ? n.title : null;
+  coin.cmCatalog = !!(coin.countermark && n && n.matched && CM_RE.test(n.title || ''));
   if (n && n.matched && !coin.catalogConflict) {
     coin.numista = `N# ${n.id}`; coin.numistaUrl = n.url; coin.numistaTitle = n.title;
     if (n.km) coin.km = n.km;
