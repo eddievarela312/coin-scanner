@@ -1780,6 +1780,18 @@ const GRADE_MAP = (g) => {
   return null;
 };
 
+// Claude sometimes keys estimates by slab grade ("MS63") or as "EF"; fold them into the app's grade buckets.
+function normAiValue(v) {
+  const out = {};
+  if (!v || typeof v !== 'object') return out;
+  for (const [k, r] of Object.entries(v)) {
+    if (!Array.isArray(r) || r.length !== 2 || !(+r[1] > 0)) continue;
+    const g = GRADES.includes(k) || k === 'ANY' ? k : GRADE_MAP(k);
+    if (!g) continue;
+    out[g] = out[g] ? [Math.min(out[g][0], +r[0]), Math.max(out[g][1], +r[1])] : [+r[0], +r[1]];
+  }
+  return out;
+}
 function coinFromAI(r) {
   const fieldName = { mint_mark: 'mint', year: 'year', country: 'country', denomination: 'denomination' };
   const num = (v) => (typeof v === 'number' && isFinite(v) && v > 0) ? v : null;
@@ -1798,7 +1810,7 @@ function coinFromAI(r) {
     suggestedGrades: sugg, gradeSensitive: !!r.grade_sensitive, skipGrade: !!r.is_bullion_like,
     cpg: {}, sales: [],
     alternates: (r.candidates || []).filter((x) => x && x.coin_name).slice(0, 4),
-    aiValue: r.rough_value_usd && typeof r.rough_value_usd === 'object' ? r.rough_value_usd : {},
+    aiValue: normAiValue(r.rough_value_usd),
     slab: r.slab && (r.slab.service || r.slab.grade) ? r.slab : null,
     gradeNote: r.grade_note || '', confidence: ['High', 'Medium', 'Low'].includes(r.confidence) ? r.confidence : 'Medium',
     photoFeedback: r.photo_feedback || '',

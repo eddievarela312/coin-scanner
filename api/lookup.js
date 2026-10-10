@@ -19,7 +19,12 @@ export default async function handler(req, res) {
   if (!code || req.headers['x-access-code'] !== code) return res.status(401).json({ error: 'need_code' });
   const owner = !!process.env.ADMIN_CODE && req.headers['x-admin-code'] === process.env.ADMIN_CODE;
   const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
-  const coin = body.coin || {};
+  const coin = { ...(body.coin || {}) };
+  // Clean fields before searching catalogs: "Mexico (Spanish Colonial, ...)" -> "Mexico"; "1293 AH (1876)" -> "1876".
+  coin.country = String(coin.country || '').replace(/\(.*?\)/g, '').split(/[,;]/)[0].trim();
+  const ys = String(coin.year || '').match(/\b(1[0-9]{3}|20[0-9]{2})\b/g) || [];
+  if (ys.length) coin.year = /\bAH\b|hijri|islamic/i.test(String(coin.year)) && ys.length > 1 ? ys[ys.length - 1] : ys[0];
+  coin.denomination = String(coin.denomination || '').replace(/\(.*?\)/g, '').trim();
 
   const slab = coin.slab || {};
   const pcgs = String(slab.pcgs_number || coin.pcgs_number || '').replace(/\D/g, '') || null;
