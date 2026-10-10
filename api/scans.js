@@ -27,6 +27,19 @@ export default async function handler(req, res) {
       uncertain: r.result && r.result.uncertain_fields, candidates: r.result && (r.result.candidates || []).map((c) => c.coin_name),
       photos: withPhotos && r.photo_paths ? await Promise.all(r.photo_paths.map((p) => signedUrl(p))) : undefined,
     })));
+    // &download=1 saves a file with the full details for review (e.g. to share with Claude).
+    if (req.query.download === '1') {
+      const full = rows.map((r, i) => {
+        const x = r.result || {};
+        return { ...scans[i], country: x.country, denomination: x.denomination, year: x.year, mint: x.mint_mark, km: x.km_number,
+          series: x.series, grades: x.suggested_grades, slab: x.slab || undefined, countermark: x.countermark || undefined,
+          rarity: x.rarity && x.rarity.level ? x.rarity : undefined, rough_value: x.rough_value_usd, model: x._model, claude_ms: x._claude_ms,
+          photo_note: x.photo_feedback || undefined };
+      });
+      res.setHeader('Content-Type', 'application/json');
+      res.setHeader('Content-Disposition', `attachment; filename="coin-scans-${new Date().toISOString().slice(0, 10)}.json"`);
+      return res.status(200).send(JSON.stringify({ summary, scans: full }, null, 1));
+    }
     return res.status(200).json({ summary, scans });
   } catch (e) {
     return res.status(500).json({ error: String(e.message || e) });
