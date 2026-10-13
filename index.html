@@ -134,7 +134,8 @@ tr.hl td{background:var(--accent-soft)}
 .howto{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;text-align:center}
 .howto div{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 4px;display:flex;flex-direction:column;gap:2px}
 .howto b{font-family:var(--f-display);font-size:1.1rem;color:var(--accent)}
-.pricepair .card{gap:6px;padding:14px}
+.pricepair{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+.pricepair .card{gap:6px;padding:14px;min-width:0}
 .pricepair .eyebrow{white-space:nowrap;margin:0}
 .pp{font-family:var(--f-display);font-weight:700;font-size:1.75rem;line-height:1.05;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
 .note{border-radius:12px;background:var(--warn-soft);border:1px solid var(--warn);color:var(--ink)}
@@ -701,8 +702,18 @@ function analyze(coin, grades, confirmed, costInput, marginOverride, expSale) {
   if (isQuick) { const mv = melt(coin, spot()); range = { low: mv, high: mv, mid: mv, basis: 'melt', grades: g, source: 'melt' }; }
   const limited = isAI && (!range || range.source === 'ai');
   // AI-only estimate: always price the target buy from the LOW end (conservative), labeled as an estimate.
-  const tbRaw = limited ? (range ? round2(range.low * (1 - m)) : null) : targetBuy(range, m, isConfirmed);
+  let tbRaw = limited ? (range ? round2(range.low * (1 - m)) : null) : targetBuy(range, m, isConfirmed);
   const feeBase = range ? (isConfirmed && !limited ? range.mid : range.low) : 0;
+  // Coins worth mostly their metal (gold 20 Kroner, Sovereigns, silver dollars near melt): a 25% margin on the
+  // whole value would put the target buy far below melt. Use the bullion margin on the metal part and the
+  // numismatic margin only on the premium above melt.
+  const meltV = melt(coin, spot());
+  let metalBlend = false;
+  if (tbRaw != null && meltV > 0 && feeBase > 0 && !coin.skipGrade) {
+    const metal = Math.min(meltV, feeBase), premium = Math.max(0, feeBase - meltV);
+    const blended = round2(metal * (1 - S.settings.marginBullion) + premium * (1 - m));
+    if (blended > tbRaw) { tbRaw = blended; metalBlend = true; }
+  }
   const tb = tbRaw == null ? null : Math.max(0, round2(tbRaw - feeOf(feeBase, coin.skipGrade)));
   const hideTarget = coin.gradeSensitive && !isConfirmed;
   const cost = parseFloat(costInput);
@@ -711,7 +722,7 @@ function analyze(coin, grades, confirmed, costInput, marginOverride, expSale) {
   const fp = feeOn() ? (+S.settings.fee.pct || 0) / 100 : 0, ff = feeOn() ? (+S.settings.fee.fixed || 0) : 0;
   const feas = effCost > 0 && (!isAI || (range && range.source === 'cpg')) ? feasibility(coin, g, effCost + ff, Math.min(0.95, m + fp), spot()) : null;
   return {
-    isAI, limited, margin: m, grades: g, confirmed: isConfirmed, range, targetBuy: tb, hideTarget, liq, feas,
+    isAI, limited, margin: m, metalBlend, grades: g, confirmed: isConfirmed, range, targetBuy: tb, hideTarget, liq, feas,
     melt: melt(coin, spot()), cost: cost > 0 ? cost : null, effCost,
     profitLow: range && effCost ? range.low - feeOf(range.low) - effCost : null,
     profitHigh: range && effCost ? range.high - feeOf(range.high) - effCost : null,
@@ -1104,9 +1115,9 @@ function marketInner(c, a) {
     <div class="row between" style="gap:6px"><button class="btn-link small" data-a="clearExp" style="padding:0">Use estimate</button><button class="btn-primary" data-a="editMarketDone" style="min-height:34px;padding:4px 14px;font-size:.85rem">Done</button></div>`;
   const src = a.limited ? `Our estimate${a.range && a.range.aiFrom ? ` (at ${a.range.aiFrom})` : ''}` : a.range ? `${shortBasis(a.range)}${!a.confirmed ? ' · grade not confirmed' : ''}` : '';
   return `
-    <div class="row between"><span class="row" style="gap:6px"><span class="eyebrow">Market</span>${a.limited ? '<span class="pill warn" style="font-size:.62rem;padding:1px 6px">AI est.</span>' : a.range && a.range.source === 'dealer' ? '<span class="pill good" style="font-size:.62rem;padding:1px 6px">Yours</span>' : ''}</span><span class="chg">Change</span></div>
+    <div class="row between"><span class="eyebrow">Market</span><span class="chg">Change</span></div>
     <span class="pp"${a.limited ? ' style="color:var(--warn)"' : ''}>${a.range ? range$(a.range) : '—'}</span>
-    <span class="small muted">${esc(src)}</span>
+    <span class="small muted">${a.limited ? '<span class="pill warn" style="font-size:.62rem;padding:1px 6px;margin-right:4px">AI est.</span>' : a.range && a.range.source === 'dealer' ? '<span class="pill good" style="font-size:.62rem;padding:1px 6px;margin-right:4px">Yours</span>' : ''}${esc(src)}</span>
 `;
 }
 function profitText(a) {
@@ -1123,7 +1134,7 @@ function tbInner(c, a) {
   if (a.targetBuy == null) return head + `<span class="pp">—</span><span class="small muted">Tap Market to enter a price</span>`;
   const pt = profitText(a);
   return head + `<span class="pp"${a.limited ? ' style="color:var(--warn)"' : ''}>${a.limited ? '~' : ''}${money(a.targetBuy)}</span>
-    <span class="small muted">${pct(a.margin)} margin · ${feeShort()}${pt ? ` · profit ${pt}` : ''}</span>
+    <span class="small muted">${a.metalBlend ? `${pct(S.settings.marginBullion)} on metal, ${pct(a.margin)} on premium` : `${pct(a.margin)} margin`} · ${feeShort()}${pt ? ` · profit ${pt}` : ''}</span>
 `;
 }
 function tbPanel(c, a) {
@@ -1132,7 +1143,8 @@ function tbPanel(c, a) {
   const opts = c.skipGrade ? [3, 5, 8, 10, 15] : [15, 20, 25, 30, 35];
   const ch = S.settings.fee.channel;
   return `
-    <span class="eyebrow">Your margin${c.skipGrade ? ' (bullion)' : ''}</span>
+    ${a.metalBlend ? `<div style="background:var(--sunk);border-radius:10px;padding:8px 10px;font-size:.85rem">Mostly metal: melt is ${money(a.melt)}, so the target buy uses your bullion margin (${pct(S.settings.marginBullion)}) on the metal and your coin margin on the premium above melt. Change the bullion margin in Settings.</div>` : ''}
+    <span class="eyebrow">Your margin${c.skipGrade ? ' (bullion)' : a.metalBlend ? ' on the premium' : ''}</span>
     <div class="seg5">${opts.map((v) => `<button class="${v === cur ? 'on' : ''}" data-a="setMargin" data-k="${key}" data-v="${v}">${v}%</button>`).join('')}</div>
     <span class="eyebrow" style="margin-top:6px">Selling on</span>
     <div class="seg5">${[['none', 'No fees'], ['ebay', 'eBay'], ['whatnot', 'Whatnot']].concat(ch === 'custom' ? [['custom', 'Custom']] : []).map(([k, l]) => `<button class="${ch === k ? 'on' : ''}" data-a="feeChannel" data-ch="${k}">${l}</button>`).join('')}</div>
@@ -1435,6 +1447,13 @@ function lotTotals() {
     liqLabel: r.a.liq ? r.a.liq.label : '',
   }));
   const T = purchaseTotals(items, margin, parseFloat(P.lotOffer) || 0);
+  // Same metal-aware rule as single coins: bullion margin on melt, lot margin on the premium.
+  T.maxOffer = round2(items.reduce((acc, it) => {
+    const base = it.targetBase || 0, mv = it.melt || 0;
+    const plain = base * (1 - margin);
+    const blend = Math.min(mv, base) * (1 - S.settings.marginBullion) + Math.max(0, base - mv) * (1 - margin);
+    return acc + Math.max(plain, mv > 0 ? blend : 0);
+  }, 0));
   if (feeOn()) {
     const sumFee = (k) => items.reduce((acc, it) => acc + feeOf(it[k]), 0);
     T.feesMid = sumFee('mid');
