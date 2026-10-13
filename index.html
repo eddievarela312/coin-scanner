@@ -212,6 +212,11 @@ button:active{transform:scale(.98)}
 .issues td,.issues th{padding:7px 6px;font-size:.88rem}
 .issues tr.cur td{background:var(--accent-soft);font-weight:700}
 .issues .lowtag{font-size:.65rem;font-weight:700;color:var(--warn);margin-left:4px}
+.breakdown{display:flex;flex-direction:column;background:var(--sunk);border-radius:12px;padding:6px 12px}
+.brow{display:flex;justify-content:space-between;gap:10px;padding:7px 0;font-size:.92rem;border-bottom:1px solid var(--line)}
+.brow:last-child{border-bottom:0}
+.brow.sub span:last-child{color:var(--muted)}
+.brow.total{font-weight:800;font-size:1rem}
 .confirmbox{border:1px solid var(--bad);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:10px}
 </style>
 
@@ -1134,22 +1139,48 @@ function tbInner(c, a) {
   if (a.targetBuy == null) return head + `<span class="pp">—</span><span class="small muted">Tap Market to enter a price</span>`;
   const pt = profitText(a);
   return head + `<span class="pp"${a.limited ? ' style="color:var(--warn)"' : ''}>${a.limited ? '~' : ''}${money(a.targetBuy)}</span>
-    <span class="small muted">${a.metalBlend ? `${pct(S.settings.marginBullion)} on metal, ${pct(a.margin)} on premium` : `${pct(a.margin)} margin`} · ${feeShort()}${pt ? ` · profit ${pt}` : ''}</span>
+    <span class="small muted">${pt ? `Profit ${pt}` : ''}${feeOn() ? ` · after ${FEE_NAMES[S.settings.fee.channel] || ''} fees` : ''}</span>
 `;
 }
+// Plain breakdown of how the target buy was built.
+function tbBreakdown(c, a) {
+  if (a.targetBuy == null || !a.range) return '';
+  const base = a.range ? (a.confirmed && !a.limited ? a.range.mid : a.range.low) : 0;
+  const fee = feeOf(base, c.skipGrade);
+  const metalWord = c.agw ? 'Gold' : 'Silver';
+  const row = (label, val, cls = '') => `<div class="brow ${cls}"><span>${label}</span><span class="num">${val}</span></div>`;
+  const neg = (n) => '−' + money(n);
+  let rows = '';
+  if (a.metalBlend) {
+    const mv = a.melt, metal = Math.min(mv, base), prem = Math.max(0, base - mv), mb = S.settings.marginBullion;
+    rows += row(`${metalWord} value (melt)`, money(metal));
+    rows += row(`Your ${pct(mb)} on the ${metalWord.toLowerCase()}`, neg(metal * mb), 'sub');
+    if (prem > 0) rows += row(`Collector premium, after your ${pct(a.margin)}`, '+' + money(prem * (1 - a.margin)));
+  } else {
+    rows += row(`Sells for about${a.confirmed && !a.limited ? '' : ' (low end)'}`, money(base));
+    rows += row(`Your ${pct(a.margin)} margin`, neg(base * a.margin), 'sub');
+  }
+  if (fee > 0) rows += row(`${FEE_NAMES[S.settings.fee.channel] || 'Selling'} fees`, neg(fee), 'sub');
+  rows += row('Target buy', money(a.targetBuy), 'total');
+  return `<div class="breakdown">${rows}</div>`;
+}
 function tbPanel(c, a) {
-  const key = c.skipGrade ? 'marginBullion' : 'marginNumis';
-  const cur = Math.round(S.settings[key] * 100);
-  const opts = c.skipGrade ? [3, 5, 8, 10, 15] : [15, 20, 25, 30, 35];
   const ch = S.settings.fee.channel;
+  const chips = (key, opts) => { const cur = Math.round(S.settings[key] * 100); return `<div class="seg5">${opts.map((v) => `<button class="${v === cur ? 'on' : ''}" data-a="setMargin" data-k="${key}" data-v="${v}">${v}%</button>`).join('')}</div>`; };
+  const metalWord = c.agw ? 'gold' : 'silver';
   return `
-    ${a.metalBlend ? `<div style="background:var(--sunk);border-radius:10px;padding:8px 10px;font-size:.85rem">Mostly metal: melt is ${money(a.melt)}, so the target buy uses your bullion margin (${pct(S.settings.marginBullion)}) on the metal and your coin margin on the premium above melt. Change the bullion margin in Settings.</div>` : ''}
-    <span class="eyebrow">Your margin${c.skipGrade ? ' (bullion)' : a.metalBlend ? ' on the premium' : ''}</span>
-    <div class="seg5">${opts.map((v) => `<button class="${v === cur ? 'on' : ''}" data-a="setMargin" data-k="${key}" data-v="${v}">${v}%</button>`).join('')}</div>
-    <span class="eyebrow" style="margin-top:6px">Selling on</span>
+    <span class="eyebrow">How we got ${money(a.targetBuy)}</span>
+    ${tbBreakdown(c, a)}
+    ${c.skipGrade
+      ? `<span class="eyebrow" style="margin-top:8px">Your margin</span>${chips('marginBullion', [3, 5, 8, 10, 15])}`
+      : a.metalBlend
+        ? `<span class="eyebrow" style="margin-top:8px">Margin on the ${metalWord}</span>${chips('marginBullion', [3, 5, 8, 10, 15])}
+           <span class="eyebrow" style="margin-top:4px">Margin on the premium</span>${chips('marginNumis', [15, 20, 25, 30, 35])}`
+        : `<span class="eyebrow" style="margin-top:8px">Your margin</span>${chips('marginNumis', [15, 20, 25, 30, 35])}`}
+    <span class="eyebrow" style="margin-top:8px">Selling on</span>
     <div class="seg5">${[['none', 'No fees'], ['ebay', 'eBay'], ['whatnot', 'Whatnot']].concat(ch === 'custom' ? [['custom', 'Custom']] : []).map(([k, l]) => `<button class="${ch === k ? 'on' : ''}" data-a="feeChannel" data-ch="${k}">${l}</button>`).join('')}</div>
-    <span class="small muted">${feeOn() ? `${FEE_DESC[ch] || `${S.settings.fee.pct}% + $${(+S.settings.fee.fixed).toFixed(2)} per order`}, taken out of the target buy and profit.` : 'Pick a platform to see profit after its cut.'} Saved for every coin.</span>
-    <div id="calc" class="stack" style="gap:10px;margin-top:6px">${calcInner(c, a)}</div>
+    ${feeOn() ? `<span class="small muted">${ch === 'ebay' ? '13.25% + $0.40 per sale' : ch === 'whatnot' ? '6.9% + $0.30 per sale' : `${S.settings.fee.pct}% + $${(+S.settings.fee.fixed).toFixed(2)} per sale`}</span>` : ''}
+    <div id="calc" class="stack" style="gap:10px;margin-top:8px">${calcInner(c, a)}</div>
     ${greyLine(c, a)}`;
 }
 
@@ -1233,7 +1264,7 @@ function salesRange(coin, grades) {
 
 function calcInner(c, a) {
   return `
-    <label class="field" for="cost">What would you pay?
+    <label class="field" for="cost">Test an offer
       <input id="cost" type="number" inputmode="decimal" min="0" step="0.01" placeholder="${a.targetBuy ? 'Target buy ' + money(a.targetBuy) : 'Your cost'}" value="${esc(S.cost)}"></label>
     <div id="calcres" class="stack" style="gap:10px">${calcRes(c, a)}</div>`;
 }
@@ -1241,10 +1272,9 @@ function calcRes(c, a) {
   return `
     ${a.effCost && a.range ? `<div class="grid2">
       <div class="tile"><span class="eyebrow">Expected profit</span><b class="num">${money(a.profitLow) === money(a.profitHigh) ? money(a.profitLow) : `${money(a.profitLow)}–${money(a.profitHigh)}`}</b></div>
-      <div class="tile"><span class="eyebrow">Margin at typical sale</span><b class="num">${pct(a.maxMargin)}</b></div>
+      <div class="tile"><span class="eyebrow">Your margin</span><b class="num">${pct(a.maxMargin)}</b></div>
     </div>` : ''}
-    ${feasBlock(a, c)}
-    ${!a.cost && a.effCost ? '<span class="small muted">Showing numbers at your target buy. Enter a cost to test a real offer.</span>' : ''}`;
+`;
 }
 
 screens.sales = () => {
