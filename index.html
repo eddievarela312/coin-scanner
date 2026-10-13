@@ -714,7 +714,8 @@ function analyze(coin, grades, confirmed, costInput, marginOverride, expSale) {
   // numismatic margin only on the premium above melt.
   const meltV = melt(coin, spot());
   let metalBlend = false;
-  if (tbRaw != null && meltV > 0 && feeBase > 0 && !coin.skipGrade) {
+  // Only for coins where melt is at least 60% of the value; true collector coins keep the plain margin.
+  if (tbRaw != null && meltV > 0 && feeBase > 0 && !coin.skipGrade && meltV >= 0.6 * feeBase) {
     const metal = Math.min(meltV, feeBase), premium = Math.max(0, feeBase - meltV);
     const blended = round2(metal * (1 - S.settings.marginBullion) + premium * (1 - m));
     if (blended > tbRaw) { tbRaw = blended; metalBlend = true; }
@@ -1482,7 +1483,7 @@ function lotTotals() {
     const base = it.targetBase || 0, mv = it.melt || 0;
     const plain = base * (1 - margin);
     const blend = Math.min(mv, base) * (1 - S.settings.marginBullion) + Math.max(0, base - mv) * (1 - margin);
-    return acc + Math.max(plain, mv > 0 ? blend : 0);
+    return acc + (mv > 0 && mv >= 0.6 * base ? Math.max(plain, blend) : plain);
   }, 0));
   if (feeOn()) {
     const sumFee = (k) => items.reduce((acc, it) => acc + feeOf(it[k]), 0);
