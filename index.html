@@ -188,6 +188,21 @@ tr.hl td{background:var(--accent-soft)}
 .seg5{display:flex;gap:6px;flex-wrap:wrap}
 .seg5 button{flex:1;min-height:40px;padding:6px 8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:10px;font-weight:600;font-size:.88rem}
 .seg5 button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.idhead{display:flex;gap:12px;align-items:center}
+.idhead img{width:56px;height:56px;border-radius:50%;object-fit:cover;flex:none;box-shadow:0 2px 8px rgba(0,0,0,.25)}
+.idhead h2{margin:0;line-height:1.15}
+.gradeline{display:flex;align-items:center;gap:10px;margin-bottom:-6px}
+.gchips{display:grid;grid-template-columns:repeat(6,1fr);gap:4px;background:var(--sunk);padding:4px;border-radius:12px}
+.gchips button{min-height:38px;padding:0;border:0;border-radius:9px;background:transparent;color:var(--muted);font-weight:700;font-size:.9rem}
+.gchips button.sugg{color:var(--ink)}
+.gchips button.on{background:var(--surface);color:var(--ink);box-shadow:0 1px 4px rgba(0,0,0,.18)}
+.gchips button.sugg.on{outline:1.5px dashed var(--warn);outline-offset:-2px}
+.iconbtn{background:none;border:0;min-height:40px;min-width:40px;font-size:1.3rem;color:var(--muted);padding:0}
+@keyframes enter{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+#app.enter > *{animation:enter .22s ease-out both}
+.sheet{animation:enter .18s ease-out both}
+button:active{transform:scale(.98)}
+@media (prefers-reduced-motion:reduce){#app.enter > *,.sheet{animation:none}button:active{transform:none}}
 .confirmbox{border:1px solid var(--bad);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:10px}
 </style>
 
@@ -723,17 +738,15 @@ screens.tour = () => {
 screens.home = () => {
   const recent = S.history.slice(0, 3);
   return `
+  <div class="row between" style="margin-bottom:-12px"><span></span><button class="iconbtn" data-a="go" data-s="settings" aria-label="Margins, fees and spot">⚙︎</button></div>
   <div class="home-hero">
     <div class="coinmark" aria-hidden="true"></div>
     <h1>Coin Scanner</h1>
     <p class="muted">Scan it. Price it. Buy it. List it.</p>
   </div>
-  ${spot().live ? '' : `<div class="banner">Spot is a sample right now. Set today's price in Margins &amp; spot.</div>`}
+  ${spot().live ? '' : `<div class="banner">Spot is a sample right now. Set today's price under ⚙︎.</div>`}
   <button class="btn-primary btn-wide" data-a="scan">Scan a coin</button>
-  <div class="grid2">
-    <button class="btn-ghost" data-a="go" data-s="lots">Lots &amp; buys${S.lots.filter((l) => l.items.length).length ? ` (${S.lots.filter((l) => l.items.length).length})` : ''}</button>
-    <button class="btn-ghost" data-a="go" data-s="settings">Margins &amp; spot</button>
-  </div>
+  <button class="btn-ghost btn-wide" data-a="go" data-s="lots">Lots &amp; buys${S.lots.filter((l) => l.items.length).length ? ` (${S.lots.filter((l) => l.items.length).length})` : ''}</button>
   ${recent.length ? '' : `<button class="tourcta" data-a="tourStart"><span style="font-size:1.6rem" aria-hidden="true">▶</span><span><b>New here? Take the 30-second tour</b><span class="small muted">See how scanning, pricing and lots work</span></span></button>`}
   ${recent.length ? `<div class="card"><div class="row between"><span class="eyebrow">Recent scans</span><button class="btn-link small" data-a="go" data-s="history">See all ${S.history.length} ›</button></div>
     <div class="mini">${recent.map((h) => histMini(h)).join('')}</div></div>` : ''}
@@ -990,13 +1003,16 @@ screens.money = () => {
     const w = (n) => (n < 0 ? '-$' : '$') + Math.abs(Math.round(n)).toLocaleString('en-US'); const L = w(lo), H = w(hi); return L === H ? `~${H}` : `~${L}–${H}`;
   })() : null;
   return `
-  <div class="topbar"><button class="back" data-a="go" data-s="${c.skipGrade ? 'match' : 'grade'}">Back</button>
-    ${c.skipGrade ? '<span class="pill neutral">Bullion pricing</span>' : `<button class="btn-link" data-a="go" data-s="grade">${a.confirmed ? `${gradeTxt} · Change` : `${gradeTxt} suggested · Confirm`}</button>`}</div>
-  <div class="stack" style="gap:4px">
-    <h2>${esc(c.name)}</h2>
-    ${idl ? `<span class="small muted">${esc(idl)}</span>` : ''}
-    ${c.lookupPending ? '<span class="small muted">Checking Numista and Greysheet…</span>' : ''}
+  <div class="topbar"><button class="back" data-a="go" data-s="home">Home</button>${c.source === 'ai' ? '<button class="btn-link small" data-a="notMine">Not my coin?</button>' : ''}</div>
+  <div class="idhead">
+    ${S.photos && (S.photos.obv || S.photos.thumb) ? `<img src="${S.photos.obv || S.photos.thumb}" alt="">` : ''}
+    <div class="stack" style="gap:3px;min-width:0">
+      <h2>${esc(c.name)}</h2>
+      ${idl ? `<span class="small muted">${esc(idl)}</span>` : ''}
+      ${c.lookupPending ? '<span class="small muted">Checking catalogs…</span>' : ''}
+    </div>
   </div>
+  ${gradeRow(c, a)}
   ${countermarkBanner(c)}
   ${rarityBanner(c)}
 
@@ -1021,7 +1037,7 @@ screens.money = () => {
 
 
   <button class="btn-link" data-a="go" data-s="details" style="align-self:flex-start">Coin details ›</button>
-  <p class="small muted" style="text-align:center">${S.feedback ? 'Thanks, noted.' : `Correct ID? <button class="btn-link small" data-a="fb" data-v="yes">Yes</button> · <button class="btn-link small" data-a="fb" data-v="no">No</button>`}</p>`;
+`;
 };
 
 // eBay sold search for this exact coin (opens eBay; nothing is scraped).
@@ -1068,7 +1084,7 @@ function marketInner(c, a) {
     <div class="row between"><span class="eyebrow">Market</span>${a.limited ? '<span class="pill warn" style="font-size:.68rem;padding:2px 8px">AI est.</span>' : a.range && a.range.source === 'dealer' ? '<span class="pill good" style="font-size:.68rem;padding:2px 8px">Yours</span>' : ''}</div>
     <span class="pp"${a.limited ? ' style="color:var(--warn)"' : ''}>${a.range ? range$(a.range) : '—'}</span>
     <span class="small muted">${esc(src)}</span>
-    <span class="small tapnote">✎ Tap to adjust</span>`;
+    ${seasoned() ? '' : '<span class="small tapnote">✎ Tap to adjust</span>'}`;
 }
 function profitText(a) {
   if (!(a.targetBuy && a.range)) return '';
@@ -1080,12 +1096,12 @@ const feeShort = () => feeOn() ? `${FEE_NAMES[S.settings.fee.channel] || 'Custom
 // Target buy card: tap to open margin, fees and "what would you pay".
 function tbInner(c, a) {
   const head = `<div class="row between"><span class="eyebrow">Target buy</span><span class="chev" aria-hidden="true">${S.tbOpen ? '▴' : '▾'}</span></div>`;
-  if (a.hideTarget) return head + `<span class="pp" style="font-size:1.15rem">Confirm grade</span><button class="btn-link small" data-a="go" data-s="grade" style="padding:0;align-self:flex-start">Pick the grade ›</button>`;
+  if (a.hideTarget) return head + `<span class="pp" style="font-size:1.15rem">Pick a grade</span><span class="small muted">Tap the grade above</span>`;
   if (a.targetBuy == null) return head + `<span class="pp">—</span><span class="small muted">Tap Market to enter a price</span>`;
   const pt = profitText(a);
   return head + `<span class="pp"${a.limited ? ' style="color:var(--warn)"' : ''}>${a.limited ? '~' : ''}${money(a.targetBuy)}</span>
     <span class="small muted">${pct(a.margin)} margin · ${feeShort()}${pt ? ` · profit ${pt}` : ''}</span>
-    <span class="small tapnote">${S.tbOpen ? 'Tap to close' : '▾ Margin, fees, your offer'}</span>`;
+    ${seasoned() ? '' : `<span class="small tapnote">${S.tbOpen ? 'Tap to close' : '▾ Margin, fees, your offer'}</span>`}`;
 }
 function tbPanel(c, a) {
   const key = c.skipGrade ? 'marginBullion' : 'marginNumis';
@@ -1100,6 +1116,15 @@ function tbPanel(c, a) {
     <span class="small muted">${feeOn() ? `${S.settings.fee.pct}% + $${(+S.settings.fee.fixed).toFixed(2)} per sale, taken out of the target buy and profit.` : 'Pick a platform to see profit after its cut.'} Saved for every coin.</span>
     <div id="calc" class="stack" style="gap:10px;margin-top:6px">${calcInner(c, a)}</div>
     ${greyLine(c, a)}`;
+}
+
+// Grade chips on the price screen (replaces the separate grade step).
+function gradeRow(c, a) {
+  if (c.skipGrade) return '<div class="gradeline"><span class="pill neutral">Bullion · priced by metal</span></div>';
+  if (c.slab && GRADE_MAP(c.slab.grade)) return `<div class="gradeline"><span class="pill good">${esc(c.slab.service || 'Slab')} ${esc(c.slab.grade)}</span><span class="small muted">grade from the label</span></div>`;
+  const sugg = c.suggestedGrades || [];
+  return `<div class="gradeline"><span class="eyebrow" style="margin:0">Grade</span>${a.confirmed ? '' : `<span class="small" style="color:var(--warn)">${c.gradeSensitive ? 'confirm to see target buy' : 'suggested · tap to confirm'}</span>`}</div>
+    <div class="gchips" role="group" aria-label="Grade">${GRADES.map((g) => `<button class="${S.grades.includes(g) ? (a.confirmed ? 'on' : 'sugg on') : sugg.includes(g) ? 'sugg' : ''}" data-a="pickGrade" data-g="${g}">${g}</button>`).join('')}</div>`;
 }
 
 // What the dealer can do with this coin. Nothing is pre-assigned to a lot.
@@ -1144,16 +1169,16 @@ function actionArea(a) {
   const SL = S.sessionLot && S.lots.find((l) => l.id === S.sessionLot && l.kind !== 'singles' && l.status !== 'bought');
   if (SL) return `<button class="btn-primary btn-wide" data-a="quickLot" data-v="buy">+ Add to ${esc(SL.name)}</button>
     <div class="grid2">
-      <button class="btn-ghost" data-a="quickLot" data-v="maybe">Add as Maybe</button>
-      <button class="btn-ghost" data-a="sheet" data-v="bought">Bought it alone</button>
+      <button class="btn-ghost" data-a="quickLot" data-v="maybe">Maybe</button>
+      <button class="btn-ghost" data-a="scan">Pass</button>
     </div>
-    <div class="row between"><button class="btn-link small" data-a="sheet" data-v="lot" style="padding:0">Different lot ›</button><button class="btn-link small" data-a="scan" style="padding:0">Pass · scan next ›</button></div>`;
+    ${S.moreActs ? `<div class="grid2"><button class="btn-ghost" data-a="sheet" data-v="bought">Bought it alone</button><button class="btn-ghost" data-a="sheet" data-v="lot">Different lot</button></div>` : '<button class="btn-link small" data-a="moreActs" style="align-self:center;padding:0">More options</button>'}`;
   return `<div class="grid2">
       <button class="btn-primary" data-a="sheet" data-v="bought">Bought it</button>
       <button class="btn-ghost" data-a="sheet" data-v="lot">Save to a lot</button>
     </div>
     <button class="btn-ghost btn-wide" data-a="scan">Pass · scan next coin</button>
-    <span class="small muted" style="text-align:center;margin-top:-6px">Every scan is kept in Recent scans either way.</span>`;
+    ${seasoned() ? '' : '<span class="small muted" style="text-align:center;margin-top:-6px">Every scan is kept in Recent scans either way.</span>'}`;
 }
 
 // Greysheet wholesale is internal-use only: shown only when the owner code is set on this phone.
@@ -1284,11 +1309,12 @@ screens.purchase = () => {
   const head = `
     <div class="topbar"><button class="back" data-a="go" data-s="home">Home</button><button class="btn-link" data-a="go" data-s="lots">All lots ›</button></div>
     <input id="lotname" type="text" value="${esc(P.name)}" aria-label="Lot name" style="font-family:var(--f-display);font-size:1.45rem;font-weight:700;border:0;padding:4px 0;min-height:0;background:transparent">
-    <div class="row" style="gap:8px">
-      <button class="pill ${P.status !== 'bought' ? 'warn' : 'neutral'}" data-a="lotStatus" data-v="considering" style="border:0;min-height:36px;padding:6px 14px">Negotiating</button>
-      <button class="pill ${P.status === 'bought' ? 'good' : 'neutral'}" data-a="lotStatus" data-v="bought" style="border:0;min-height:36px;padding:6px 14px">Bought</button>
+    <div class="row between" style="gap:8px">
+      ${P.status === 'bought'
+        ? '<span class="pill good">Bought ✓</span><button class="btn-link small" data-a="lotStatus" data-v="considering" style="padding:0">Undo</button>'
+        : '<span class="pill warn">Negotiating</span><button class="btn-ghost" data-a="lotStatus" data-v="bought" style="min-height:36px;padding:4px 14px">Mark as bought</button>'}
     </div>
-    <label class="field" for="lotnotes">Table / notes<input id="lotnotes" type="text" value="${esc(P.notes || '')}" placeholder="e.g. Table 412, Mike, open to bulk deal"></label>`;
+    ${P.notes || S.notesOpen ? `<label class="field" for="lotnotes">Notes<input id="lotnotes" type="text" value="${esc(P.notes || '')}" placeholder="e.g. Table 412, Mike, open to bulk deal"></label>` : '<button class="btn-link small" data-a="notesOpen" style="align-self:flex-start;padding:0">+ Add note</button>'}`;
   const del = S.confirmClear
     ? `<div class="confirmbox"><b>Delete ${esc(P.name)}?</b><span class="small">This removes the lot and its ${P.items.length} coins. Scan history keeps the scans.</span>
        <div class="grid2"><button class="btn-ghost" data-a="cancelClear">Keep</button><button class="btn-primary" data-a="deleteLot" style="background:var(--bad);color:#fff">Delete</button></div></div>`
@@ -1595,7 +1621,8 @@ function render() {
   }
   window.scrollTo(0, 0);
 }
-function go(s) { if (s === 'settings' || s === 'lots') prevScreen = S.screen; if (s !== S.screen) S.confirmClear = false; S.screen = s; render(); }
+function animateEnter() { const el = document.getElementById('app'); el.classList.remove('enter'); void el.offsetWidth; el.classList.add('enter'); }
+function go(s) { if (s === 'settings' || s === 'lots') prevScreen = S.screen; const changed = s !== S.screen; if (changed) S.confirmClear = false; S.screen = s; render(); if (changed) animateEnter(); }
 
 /* ---------- photos ---------- */
 function shrink(file, max, cb) {
@@ -1904,7 +1931,8 @@ async function runIdentify(hints, opts = {}) {
     S.log.push({ at: new Date().toISOString(), hints: hints || '', result: r.coin_name, confidence: r.confidence, seconds: S.idSeconds });
     // Confident, nothing flagged: go straight to the match (it still has "Edit details").
     const confident = r.confidence === 'High' && !(S.coin.uncertain || []).length;
-    go(opts.next || (confident ? 'match' : 'fields'));
+    if (opts.next) return go(opts.next);
+    return confident ? enterPrice() : go('fields');
   } catch (e) {
     if (e && e.code === 'cancelled') return go('capture');
     if (e && e.code === 'need_code') { store.set('cs.code', ''); S.codeWrong = true; S.pending = { hints, opts }; return go('code'); }
@@ -1916,6 +1944,16 @@ async function runIdentify(hints, opts = {}) {
     clearInterval(idTimer);
   }
 }
+// Go to the price screen with a sensible grade already chosen; the dealer can tap another grade there.
+function enterPrice() {
+  const c = S.coin;
+  const sg = c.slab && GRADE_MAP(c.slab.grade);
+  if (c.skipGrade) { S.grades = ['ANY']; S.confirmed = true; }
+  else if (sg) { S.grades = [sg]; S.confirmed = true; }
+  else { const sugg = (c.suggestedGrades || []).filter((g) => GRADES.includes(g)); S.grades = [sugg[0] || 'F']; S.confirmed = false; }
+  return go('money');
+}
+const seasoned = () => S.history.length >= 5;
 function startIdentify() { runIdentify(''); }
 function waitForFiles() {
   return new Promise((resolve) => {
@@ -1950,7 +1988,7 @@ document.addEventListener('click', (e) => {
   const a = t.dataset.a;
   if (a === 'go') return go(t.dataset.s);
   if (a === 'back') return go(prevScreen);
-  if (a === 'scan') { Object.assign(S, { editMarket: false, compsOpen: false, sheet: '', paid: null, newLotName: '', lotStatus: 'buy', wrongScanId: null, photos: {}, files: {}, coin: null, fields: null, ai: null, cost: '', expSale: '', added: false, candidates: false, feedback: null, confirmClear: false, manual: false, idUnavailable: false }); return go('capture'); }
+  if (a === 'scan') { Object.assign(S, { moreActs: false, tbOpen: false, editMarket: false, compsOpen: false, sheet: '', paid: null, newLotName: '', lotStatus: 'buy', wrongScanId: null, photos: {}, files: {}, coin: null, fields: null, ai: null, cost: '', expSale: '', added: false, candidates: false, feedback: null, confirmClear: false, manual: false, idUnavailable: false }); return go('capture'); }
   if (a === 'demo') { Object.assign(S, { photos: {}, files: {}, coin: null, cost: '', expSale: '', added: false, candidates: false, feedback: null, idUnavailable: false }); return go('pick'); }
   if (a === 'saveCode') {
     const v = document.getElementById('code').value.trim();
@@ -1996,11 +2034,15 @@ document.addEventListener('click', (e) => {
       sendFeedback({ scan_id: S.scanId, correct: 'yes' });
       S.wrongScanId = null;
     }
-    if (S.coin.skipGrade) { S.grades = ['ANY']; S.confirmed = true; return go('money'); }
-    const slabGrade = S.coin.slab && GRADE_MAP(S.coin.slab.grade);
-    if (slabGrade) { S.grades = [slabGrade]; S.confirmed = true; return go('money'); }
-    return go('grade');
+    return enterPrice();
   }
+  if (a === 'pickGrade') { S.grades = [t.dataset.g]; S.confirmed = true; return render(); }
+  if (a === 'notMine') {
+    if (S.scanId && !S.feedback) sendFeedback({ scan_id: S.scanId, correct: 'no' });
+    S.feedback = 'no'; S.wrongScanId = S.scanId; S.candidates = true; return go('match');
+  }
+  if (a === 'notesOpen') { S.notesOpen = true; render(); const el = document.getElementById('lotnotes'); if (el) el.focus(); return; }
+  if (a === 'moreActs') { S.moreActs = !S.moreActs; return render(); }
   if (a === 'setGrade') { S.grades = [t.dataset.g]; S.confirmed = true; return go('money'); }
   if (a === 'useRange') { S.grades = S.coin.suggestedGrades && S.coin.suggestedGrades.length ? [...S.coin.suggestedGrades] : ['F', 'VF']; S.confirmed = false; return go('money'); }
   if (a === 'fb') {
@@ -2012,6 +2054,7 @@ document.addEventListener('click', (e) => {
   }
   if (a === 'sheet') { S.sheet = t.dataset.v; if (S.sheet === 'lot' && !S.lotStatus) S.lotStatus = 'buy'; return render(); }
   if (a === 'lotPick') { S.lotStatus = t.dataset.v; const p = document.getElementById('paid'); if (p) S.paid = p.value; const nl = document.getElementById('newlot'); if (nl) S.newLotName = nl.value; return render(); }
+  if ((a === 'saveBought' || a === 'saveToLot' || a === 'quickLot') && S.scanId && !S.feedback) { S.feedback = 'yes'; sendFeedback({ scan_id: S.scanId, correct: 'yes' }); }
   if (a === 'saveBought' || a === 'saveToLot') {
     const an = analyze(S.coin, S.grades, S.confirmed, S.cost, null, S.expSale);
     const pv = parseFloat((document.getElementById('paid') || {}).value);
