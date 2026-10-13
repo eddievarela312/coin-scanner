@@ -199,6 +199,8 @@ tr.hl td{background:var(--accent-soft)}
 .gchips button.sugg{color:var(--ink)}
 .gchips button.on{background:var(--surface);color:var(--ink);box-shadow:0 1px 4px rgba(0,0,0,.18)}
 .gchips button.sugg.on{outline:1.5px dashed var(--warn);outline-offset:-2px}
+.setbtn{display:inline-flex;align-items:center;gap:6px;min-height:38px;padding:6px 14px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--ink);font-weight:600;font-size:.9rem}
+.setbtn span{font-size:1.1rem;color:var(--accent)}
 .iconbtn{background:none;border:0;min-height:40px;min-width:40px;font-size:1.3rem;color:var(--muted);padding:0}
 @keyframes enter{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 #app.enter > *{animation:enter .22s ease-out both}
@@ -549,10 +551,25 @@ if (!S.settings.fee) S.settings.fee = { channel: 'none', pct: 0, fixed: 0 };
 const save = () => { store.set('cs.settings', S.settings); store.set('cs.lots', S.lots); store.set('cs.history', S.history); };
 
 /* ---------- selling fees (optional, set once in settings) ---------- */
-const FEE_PRESETS = { none: { pct: 0, fixed: 0 }, ebay: { pct: 13.25, fixed: 0.40 }, whatnot: { pct: 10.9, fixed: 0.30 } };
+// Coin-category rates (checked Oct 2026):
+//  eBay Coins & Paper Money: 13.25% up to $7,500 + 2.35% above; Bullion 13.6% (7% if over $7,500); per-order $0.40 ($0.30 if $10 or less).
+//  Whatnot Coins: 4% commission + 2.9% payment processing + $0.30 per order (processing also applies to buyer-paid shipping and tax).
+const FEE_PRESETS = { none: { pct: 0, fixed: 0 }, ebay: { pct: 13.25, fixed: 0.40 }, whatnot: { pct: 6.9, fixed: 0.30 } };
+const FEE_DESC = { ebay: '13.25% + $0.40 per order (eBay Coins & Paper Money; bullion 13.6%)', whatnot: '6.9% + $0.30 per order (Whatnot Coins: 4% commission + 2.9% processing)' };
+// Keep saved platform rates in step with the current coin-category rates.
+if (FEE_PRESETS[S.settings.fee.channel] && S.settings.fee.channel !== 'none') Object.assign(S.settings.fee, FEE_PRESETS[S.settings.fee.channel]);
 const FEE_NAMES = { ebay: 'eBay', whatnot: 'Whatnot', custom: 'selling' };
 const feeOn = () => S.settings.fee && S.settings.fee.channel !== 'none';
-const feeOf = (sale) => feeOn() && sale > 0 ? sale * (+S.settings.fee.pct || 0) / 100 + (+S.settings.fee.fixed || 0) : 0;
+function feeOf(sale, bullion) {
+  if (!feeOn() || !(sale > 0)) return 0;
+  const ch = S.settings.fee.channel;
+  if (ch === 'ebay') {
+    const pct = bullion ? (sale > 7500 ? 0.07 * sale : 0.136 * sale) : 0.1325 * Math.min(sale, 7500) + 0.0235 * Math.max(0, sale - 7500);
+    return pct + (sale <= 10 ? 0.30 : 0.40);
+  }
+  if (ch === 'whatnot') return sale * 0.069 + 0.30;
+  return sale * (+S.settings.fee.pct || 0) / 100 + (+S.settings.fee.fixed || 0);
+}
 const feeNote = () => feeOn() ? `after ${FEE_NAMES[S.settings.fee.channel] || 'selling'} fees` : '';
 
 /* ---------- lots ---------- */
@@ -686,7 +703,7 @@ function analyze(coin, grades, confirmed, costInput, marginOverride, expSale) {
   // AI-only estimate: always price the target buy from the LOW end (conservative), labeled as an estimate.
   const tbRaw = limited ? (range ? round2(range.low * (1 - m)) : null) : targetBuy(range, m, isConfirmed);
   const feeBase = range ? (isConfirmed && !limited ? range.mid : range.low) : 0;
-  const tb = tbRaw == null ? null : Math.max(0, round2(tbRaw - feeOf(feeBase)));
+  const tb = tbRaw == null ? null : Math.max(0, round2(tbRaw - feeOf(feeBase, coin.skipGrade)));
   const hideTarget = coin.gradeSensitive && !isConfirmed;
   const cost = parseFloat(costInput);
   const effCost = cost > 0 ? cost : tb;
@@ -744,13 +761,13 @@ screens.tour = () => {
 screens.home = () => {
   const recent = S.history.slice(0, 3);
   return `
-  <div class="row between" style="margin-bottom:-12px"><span></span><button class="iconbtn" data-a="go" data-s="settings" aria-label="Margins, fees and spot">⚙︎</button></div>
+  <div class="row between" style="margin-bottom:-12px"><span></span><button class="setbtn" data-a="go" data-s="settings"><span aria-hidden="true">⚙︎</span> Settings</button></div>
   <div class="home-hero">
     <div class="coinmark" aria-hidden="true"></div>
     <h1>Coin Scanner</h1>
     <p class="muted">Scan it. Price it. Buy it. List it.</p>
   </div>
-  ${spot().live ? '' : `<div class="banner">Spot is a sample right now. Set today's price under ⚙︎.</div>`}
+  ${spot().live ? '' : `<div class="banner">Spot is a sample right now. Set today's price in Settings.</div>`}
   <button class="btn-primary btn-wide" data-a="scan">Scan a coin</button>
   <button class="btn-ghost btn-wide" data-a="go" data-s="lots">Lots &amp; buys${S.lots.filter((l) => l.items.length).length ? ` (${S.lots.filter((l) => l.items.length).length})` : ''}</button>
   ${recent.length ? '' : `<button class="tourcta" data-a="tourStart"><span style="font-size:1.6rem" aria-hidden="true">▶</span><span><b>New here? Take the 30-second tour</b><span class="small muted">See how scanning, pricing and lots work</span></span></button>`}
@@ -1119,7 +1136,7 @@ function tbPanel(c, a) {
     <div class="seg5">${opts.map((v) => `<button class="${v === cur ? 'on' : ''}" data-a="setMargin" data-k="${key}" data-v="${v}">${v}%</button>`).join('')}</div>
     <span class="eyebrow" style="margin-top:6px">Selling on</span>
     <div class="seg5">${[['none', 'No fees'], ['ebay', 'eBay'], ['whatnot', 'Whatnot']].concat(ch === 'custom' ? [['custom', 'Custom']] : []).map(([k, l]) => `<button class="${ch === k ? 'on' : ''}" data-a="feeChannel" data-ch="${k}">${l}</button>`).join('')}</div>
-    <span class="small muted">${feeOn() ? `${S.settings.fee.pct}% + $${(+S.settings.fee.fixed).toFixed(2)} per sale, taken out of the target buy and profit.` : 'Pick a platform to see profit after its cut.'} Saved for every coin.</span>
+    <span class="small muted">${feeOn() ? `${FEE_DESC[ch] || `${S.settings.fee.pct}% + $${(+S.settings.fee.fixed).toFixed(2)} per order`}, taken out of the target buy and profit.` : 'Pick a platform to see profit after its cut.'} Saved for every coin.</span>
     <div id="calc" class="stack" style="gap:10px;margin-top:6px">${calcInner(c, a)}</div>
     ${greyLine(c, a)}`;
 }
@@ -1507,7 +1524,7 @@ screens.listing = () => {
     <span class="eyebrow">Description</span>
     <textarea id="ld" rows="9" style="font:inherit;width:100%;padding:12px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--ink)">${esc(fullDesc)}</textarea>
     <button class="btn-ghost" data-a="copy" data-what="desc">Copy description</button>
-    ${footer ? '' : '<span class="small muted">Tip: add your shipping and returns text once in Margins &amp; spot, and it is added to every listing.</span>'}
+    ${footer ? '' : '<span class="small muted">Tip: add your shipping and returns text once in Settings, and it is added to every listing.</span>'}
   </div>
   <button class="btn-primary btn-wide" data-a="copy" data-what="all">Copy all</button>
   ${S.copied ? `<div class="toast">Copied ${esc(S.copied)}</div>` : ''}`;
@@ -1595,7 +1612,8 @@ function quickCalc(m, offer) {
 
 screens.settings = () => `
   <div class="topbar"><button class="back" data-a="back">Back</button></div>
-  <h2>Margins &amp; spot</h2>
+  <h2>Settings</h2>
+  <p class="small muted" style="margin-top:-8px">Your margins, selling platform and spot prices. Saved on this phone.</p>
   <div class="card">
     <label class="field" for="mn">Numismatic coins target margin (%)<input id="mn" type="number" inputmode="decimal" value="${Math.round(S.settings.marginNumis * 100)}"></label>
     <label class="field" for="mb">Bullion &amp; junk silver target margin (%)<input id="mb" type="number" inputmode="decimal" value="${Math.round(S.settings.marginBullion * 100)}"></label>
@@ -1611,12 +1629,12 @@ screens.settings = () => `
   </div>
   <div class="card">
     <span class="eyebrow">Selling fees (optional)</span>
-    <div class="chips" style="grid-template-columns:repeat(4,1fr)">${['none', 'ebay', 'whatnot', 'custom'].map((ch) => `<button class="chip ${S.settings.fee.channel === ch ? 'on' : ''}" data-a="feeChannel" data-ch="${ch}" style="font-size:.9rem;font-family:var(--f-body)">${{ none: 'None', ebay: 'eBay', whatnot: 'Whatnot', custom: 'Custom' }[ch]}</button>`).join('')}</div>
+    <div class="seg5">${['none', 'ebay', 'whatnot', 'custom'].map((ch) => `<button class="${S.settings.fee.channel === ch ? 'on' : ''}" data-a="feeChannel" data-ch="${ch}">${{ none: 'None', ebay: 'eBay', whatnot: 'Whatnot', custom: 'Custom' }[ch]}</button>`).join('')}</div>
     <div class="grid2">
-      <label class="field" for="fpct">Fee %<input id="fpct" type="number" inputmode="decimal" value="${esc(S.settings.fee.pct)}" ${S.settings.fee.channel === 'none' ? 'disabled' : ''}></label>
-      <label class="field" for="ffix">Per-order $<input id="ffix" type="number" inputmode="decimal" value="${esc(S.settings.fee.fixed)}" ${S.settings.fee.channel === 'none' ? 'disabled' : ''}></label>
+      <label class="field" for="fpct">Fee %<input id="fpct" type="number" inputmode="decimal" value="${esc(S.settings.fee.pct)}" ${S.settings.fee.channel !== 'custom' ? 'disabled' : ''}></label>
+      <label class="field" for="ffix">Per-order $<input id="ffix" type="number" inputmode="decimal" value="${esc(S.settings.fee.fixed)}" ${S.settings.fee.channel !== 'custom' ? 'disabled' : ''}></label>
     </div>
-    <p class="small muted">Target buys and profits subtract these fees. Defaults are estimates; check your current rates.</p>
+    <p class="small muted">${FEE_DESC[S.settings.fee.channel] ? FEE_DESC[S.settings.fee.channel] + '. Coin-category rates as of Oct 2026.' : S.settings.fee.channel === 'custom' ? 'Enter your own rate, e.g. for a store subscription or another platform.' : 'No fees: target buys and profits are before any platform cut.'} Target buys and profits subtract the fee.</p>
   </div>
   <div class="card">
     <span class="eyebrow">Fast mode (test)</span>
@@ -2190,7 +2208,7 @@ document.addEventListener('click', (e) => {
     S.settings.spot.asOf = 'Sample spot, edited';
     const admEl = document.getElementById('adm'); if (admEl) store.set('cs.admin', admEl.value.trim());
     const footEl = document.getElementById('foot'); if (footEl) store.set('cs.footer', footEl.value.trim());
-    if (S.settings.fee.channel !== 'none') { S.settings.fee.pct = v('fpct') >= 0 ? v('fpct') : 0; S.settings.fee.fixed = v('ffix') >= 0 ? v('ffix') : 0; }
+    if (S.settings.fee.channel === 'custom') { S.settings.fee.pct = v('fpct') >= 0 ? v('fpct') : 0; S.settings.fee.fixed = v('ffix') >= 0 ? v('ffix') : 0; }
     save(); return go(prevScreen);
   }
 });
