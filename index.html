@@ -1123,7 +1123,7 @@ function marketInner(c, a) {
 function profitText(a) {
   if (!(a.targetBuy && a.range)) return '';
   const lo = a.range.low - feeOf(a.range.low) - a.targetBuy, hi = a.range.high - feeOf(a.range.high) - a.targetBuy;
-  const w = (n) => (n < 0 ? '-$' : '$') + Math.abs(Math.round(n)).toLocaleString('en-US');
+  const w = (n) => { const r = Math.round(n); return (r < 0 ? '-$' : '$') + Math.abs(r).toLocaleString('en-US'); };
   return w(lo) === w(hi) ? `~${w(hi)}` : `~${w(lo)}–${w(hi)}`;
 }
 const feeShort = () => feeOn() ? `${FEE_NAMES[S.settings.fee.channel] || 'Custom'} fees` : 'no fees';
