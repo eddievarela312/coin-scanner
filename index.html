@@ -180,6 +180,14 @@ tr.hl td{background:var(--accent-soft)}
 .mini img,.mini .ph{width:28px;height:28px;border-radius:50%;object-fit:cover;flex:none;background:var(--sunk)}
 .mini .mn{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.9rem;font-weight:600}
 .mini .mv{font-weight:700;font-size:.9rem}
+.tapcard{cursor:pointer;position:relative;transition:border-color .15s}
+.tapcard:active{border-color:var(--accent)}
+.tapcard.open,.tapcard.editing{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.tapnote{color:var(--accent);font-weight:600;font-size:.75rem}
+.chev{color:var(--accent);font-size:.8rem}
+.seg5{display:flex;gap:6px;flex-wrap:wrap}
+.seg5 button{flex:1;min-height:40px;padding:6px 8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:10px;font-weight:600;font-size:.88rem}
+.seg5 button.on{background:var(--accent);border-color:var(--accent);color:#fff}
 .confirmbox{border:1px solid var(--bad);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:10px}
 </style>
 
@@ -998,42 +1006,19 @@ screens.money = () => {
 
   ${catalogWarning(c)}
   <div class="grid2 pricepair">
-    <div class="card">
-      <div class="row between"><span class="eyebrow">Market</span>${a.limited ? '<span class="pill warn" style="font-size:.68rem;padding:2px 8px">AI est.</span>' : ''}</div>
-      <span class="pp"${a.limited ? ' style="color:var(--warn)"' : ''}>${a.range ? range$(a.range) : '—'}</span>
-      <span class="small muted">${a.limited ? `Our estimate, not sales data${a.range && a.range.aiFrom ? ` (priced at ${a.range.aiFrom})` : ''}` : a.range ? `${esc(shortBasis(a.range))}${!a.confirmed ? ' · grade not confirmed' : ''}` : ''}</span>
-    </div>
-    <div class="card">
-      <span class="eyebrow">Target buy</span>
-      ${a.hideTarget
-        ? `<span class="pp" style="font-size:1.15rem">Confirm grade</span><button class="btn-link small" data-a="go" data-s="grade" style="padding:0;align-self:flex-start">Pick the grade ›</button>`
-        : a.targetBuy == null
-          ? `<span class="pp">—</span><span class="small muted">Enter what comps show</span>`
-          : `<span class="pp"${a.limited ? ' style="color:var(--warn)"' : ''}>${a.limited ? '~' : ''}${money(a.targetBuy)}</span>
-             <span class="small muted">${pct(a.margin)} margin${feeOn() ? ' ' + feeNote() : ''}${profitTxt ? ` · profit ${profitTxt}` : ''}</span>`}
-    </div>
+    <div class="card tapcard${S.editMarket ? ' editing' : ''}" id="mkcard" ${S.editMarket ? '' : 'data-a="editMarket" role="button" tabindex="0" aria-label="Adjust market value"'}>${marketInner(c, a)}</div>
+    <div class="card tapcard${S.tbOpen ? ' open' : ''}" id="tbcard" data-a="toggleTb" role="button" tabindex="0" aria-expanded="${S.tbOpen ? 'true' : 'false'}">${tbInner(c, a)}</div>
   </div>
+  ${S.tbOpen ? `<div class="card" id="tbpanel">${tbPanel(c, a)}</div>` : ''}
   <div class="row" style="gap:18px;margin-top:-4px">
     <span class="small"><span class="muted">Melt</span> <b class="num">${a.melt > 0 ? money(a.melt) : 'none'}</b></span>
     <span class="small"><span class="muted">CPG</span> ${c.countermark && !CM_RE.test(c.gsName || '') ? '<b>n/a for this countermark</b>' : a.cpg.length ? `<b class="num">${a.cpg.map(money).join('–')}</b> <a href="https://www.greysheet.com" target="_blank" rel="noopener" style="color:var(--accent)">via CDN</a>` : `<b>${c.lookupPending ? 'loading…' : 'not found'}</b>`}</span>
   </div>
   ${priceCheck(c, a)}
   ${compsButton(c)}
-  ${S.compsOpen || S.expSale ? `<div class="card">
-    <label class="field" for="expsale">What are comps selling for?
-      <input id="expsale" type="number" inputmode="decimal" min="0" step="0.01" placeholder="e.g. 200" value="${esc(S.expSale)}"></label>
-    <span class="small muted">${a.range && a.range.source === 'dealer' ? `Using your number. <button class="btn-link small" data-a="clearExp" style="padding:0">Go back to the estimate</button>` : 'Your number replaces the estimate and sets the target buy.'}</span>
-  </div>` : `<button class="btn-link small" data-a="compsOpen" style="align-self:flex-start;margin-top:-6px;padding:0">Comps say something different? Enter the price ›</button>`}
 
   ${actionArea(a)}
 
-  <details id="more" ${S.moreOpen ? 'open' : ''}><summary>More analysis ›</summary>
-    <div class="stack" style="margin-top:8px">
-      ${greyLine(c, a)}
-      <div class="card" id="calc">${calcInner(c, a)}</div>
-      ${a.liq ? liquidityBlock(a.liq) : ''}
-    </div>
-  </details>
 
   <button class="btn-link" data-a="go" data-s="details" style="align-self:flex-start">Coin details ›</button>
   <p class="small muted" style="text-align:center">${S.feedback ? 'Thanks, noted.' : `Correct ID? <button class="btn-link small" data-a="fb" data-v="yes">Yes</button> · <button class="btn-link small" data-a="fb" data-v="no">No</button>`}</p>`;
@@ -1070,6 +1055,51 @@ function priceCheck(c, a) {
 }
 function compsButton(c) {
   return `<a class="btn btn-wide comps" href="${ebayUrl(c)}" target="_blank" rel="noopener"><span>See eBay sold comps</span><span aria-hidden="true">↗</span></a>`;
+}
+
+// Market card: tap to type your own sale price (from comps). Live-updates the target buy.
+function marketInner(c, a) {
+  if (S.editMarket) return `
+    <span class="eyebrow">Market · your price</span>
+    <input id="expsale" type="number" inputmode="decimal" min="0" step="0.01" placeholder="${a.range && a.range.source !== 'dealer' ? Math.round(a.range.mid) : 'e.g. 200'}" value="${esc(S.expSale)}" style="font-size:1.4rem;font-weight:700;padding:8px 10px">
+    <div class="row between" style="gap:6px"><button class="btn-link small" data-a="clearExp" style="padding:0">Use estimate</button><button class="btn-primary" data-a="editMarketDone" style="min-height:34px;padding:4px 14px;font-size:.85rem">Done</button></div>`;
+  const src = a.limited ? `Our estimate${a.range && a.range.aiFrom ? ` (at ${a.range.aiFrom})` : ''}` : a.range ? `${shortBasis(a.range)}${!a.confirmed ? ' · grade not confirmed' : ''}` : '';
+  return `
+    <div class="row between"><span class="eyebrow">Market</span>${a.limited ? '<span class="pill warn" style="font-size:.68rem;padding:2px 8px">AI est.</span>' : a.range && a.range.source === 'dealer' ? '<span class="pill good" style="font-size:.68rem;padding:2px 8px">Yours</span>' : ''}</div>
+    <span class="pp"${a.limited ? ' style="color:var(--warn)"' : ''}>${a.range ? range$(a.range) : '—'}</span>
+    <span class="small muted">${esc(src)}</span>
+    <span class="small tapnote">✎ Tap to adjust</span>`;
+}
+function profitText(a) {
+  if (!(a.targetBuy && a.range)) return '';
+  const lo = a.range.low - feeOf(a.range.low) - a.targetBuy, hi = a.range.high - feeOf(a.range.high) - a.targetBuy;
+  const w = (n) => (n < 0 ? '-$' : '$') + Math.abs(Math.round(n)).toLocaleString('en-US');
+  return w(lo) === w(hi) ? `~${w(hi)}` : `~${w(lo)}–${w(hi)}`;
+}
+const feeShort = () => feeOn() ? `${FEE_NAMES[S.settings.fee.channel] || 'Custom'} fees` : 'no fees';
+// Target buy card: tap to open margin, fees and "what would you pay".
+function tbInner(c, a) {
+  const head = `<div class="row between"><span class="eyebrow">Target buy</span><span class="chev" aria-hidden="true">${S.tbOpen ? '▴' : '▾'}</span></div>`;
+  if (a.hideTarget) return head + `<span class="pp" style="font-size:1.15rem">Confirm grade</span><button class="btn-link small" data-a="go" data-s="grade" style="padding:0;align-self:flex-start">Pick the grade ›</button>`;
+  if (a.targetBuy == null) return head + `<span class="pp">—</span><span class="small muted">Tap Market to enter a price</span>`;
+  const pt = profitText(a);
+  return head + `<span class="pp"${a.limited ? ' style="color:var(--warn)"' : ''}>${a.limited ? '~' : ''}${money(a.targetBuy)}</span>
+    <span class="small muted">${pct(a.margin)} margin · ${feeShort()}${pt ? ` · profit ${pt}` : ''}</span>
+    <span class="small tapnote">${S.tbOpen ? 'Tap to close' : '▾ Margin, fees, your offer'}</span>`;
+}
+function tbPanel(c, a) {
+  const key = c.skipGrade ? 'marginBullion' : 'marginNumis';
+  const cur = Math.round(S.settings[key] * 100);
+  const opts = c.skipGrade ? [3, 5, 8, 10, 15] : [15, 20, 25, 30, 35];
+  const ch = S.settings.fee.channel;
+  return `
+    <span class="eyebrow">Your margin${c.skipGrade ? ' (bullion)' : ''}</span>
+    <div class="seg5">${opts.map((v) => `<button class="${v === cur ? 'on' : ''}" data-a="setMargin" data-k="${key}" data-v="${v}">${v}%</button>`).join('')}</div>
+    <span class="eyebrow" style="margin-top:6px">Selling on</span>
+    <div class="seg5">${[['none', 'No fees'], ['ebay', 'eBay'], ['whatnot', 'Whatnot']].concat(ch === 'custom' ? [['custom', 'Custom']] : []).map(([k, l]) => `<button class="${ch === k ? 'on' : ''}" data-a="feeChannel" data-ch="${k}">${l}</button>`).join('')}</div>
+    <span class="small muted">${feeOn() ? `${S.settings.fee.pct}% + $${(+S.settings.fee.fixed).toFixed(2)} per sale, taken out of the target buy and profit.` : 'Pick a platform to see profit after its cut.'} Saved for every coin.</span>
+    <div id="calc" class="stack" style="gap:10px;margin-top:6px">${calcInner(c, a)}</div>
+    ${greyLine(c, a)}`;
 }
 
 // What the dealer can do with this coin. Nothing is pre-assigned to a lot.
@@ -1145,6 +1175,10 @@ function calcInner(c, a) {
   return `
     <label class="field" for="cost">What would you pay?
       <input id="cost" type="number" inputmode="decimal" min="0" step="0.01" placeholder="${a.targetBuy ? 'Target buy ' + money(a.targetBuy) : 'Your cost'}" value="${esc(S.cost)}"></label>
+    <div id="calcres" class="stack" style="gap:10px">${calcRes(c, a)}</div>`;
+}
+function calcRes(c, a) {
+  return `
     ${a.effCost && a.range ? `<div class="grid2">
       <div class="tile"><span class="eyebrow">Expected profit</span><b class="num">${money(a.profitLow) === money(a.profitHigh) ? money(a.profitLow) : `${money(a.profitLow)}–${money(a.profitHigh)}`}</b></div>
       <div class="tile"><span class="eyebrow">Margin at typical sale</span><b class="num">${pct(a.maxMargin)}</b></div>
@@ -1916,7 +1950,7 @@ document.addEventListener('click', (e) => {
   const a = t.dataset.a;
   if (a === 'go') return go(t.dataset.s);
   if (a === 'back') return go(prevScreen);
-  if (a === 'scan') { Object.assign(S, { compsOpen: false, sheet: '', paid: null, newLotName: '', lotStatus: 'buy', wrongScanId: null, photos: {}, files: {}, coin: null, fields: null, ai: null, cost: '', expSale: '', added: false, candidates: false, feedback: null, confirmClear: false, manual: false, idUnavailable: false }); return go('capture'); }
+  if (a === 'scan') { Object.assign(S, { editMarket: false, compsOpen: false, sheet: '', paid: null, newLotName: '', lotStatus: 'buy', wrongScanId: null, photos: {}, files: {}, coin: null, fields: null, ai: null, cost: '', expSale: '', added: false, candidates: false, feedback: null, confirmClear: false, manual: false, idUnavailable: false }); return go('capture'); }
   if (a === 'demo') { Object.assign(S, { photos: {}, files: {}, coin: null, cost: '', expSale: '', added: false, candidates: false, feedback: null, idUnavailable: false }); return go('pick'); }
   if (a === 'saveCode') {
     const v = document.getElementById('code').value.trim();
@@ -2065,7 +2099,11 @@ document.addEventListener('click', (e) => {
     if (FEE_PRESETS[ch]) { S.settings.fee.pct = FEE_PRESETS[ch].pct; S.settings.fee.fixed = FEE_PRESETS[ch].fixed; }
     save(); return render();
   }
-  if (a === 'clearExp') { S.expSale = ''; S.compsOpen = false; return render(); }
+  if (a === 'clearExp') { S.expSale = ''; S.compsOpen = false; S.editMarket = false; return render(); }
+  if (a === 'editMarket') { S.editMarket = true; render(); const el = document.getElementById('expsale'); if (el) { el.focus(); } return; }
+  if (a === 'editMarketDone') { const el = document.getElementById('expsale'); if (el) S.expSale = el.value; S.editMarket = false; return render(); }
+  if (a === 'toggleTb') { if (e.target.closest('#tbpanel')) return; S.tbOpen = !S.tbOpen; return render(); }
+  if (a === 'setMargin') { S.settings[t.dataset.k] = (+t.dataset.v) / 100; save(); return render(); }
   if (a === 'compsOpen') { S.compsOpen = true; render(); const el = document.getElementById('expsale'); if (el) el.focus(); return; }
   if (a === 'fastMode') { store.set('cs.fast', t.dataset.v === '1'); return render(); }
   if (a === 'askClear') { S.confirmClear = true; return render(); }
@@ -2103,11 +2141,7 @@ document.addEventListener('input', (e) => {
   if (el.id === 'cost') {
     S.cost = el.value;
     const a = analyze(S.coin, S.grades, S.confirmed, S.cost, null, S.expSale);
-    const calc = document.getElementById('calc');
-    const pos = el.selectionStart;
-    calc.innerHTML = calcInner(S.coin, a);
-
-    const ni = document.getElementById('cost'); ni.focus(); try { ni.setSelectionRange(pos, pos); } catch (_) {}
+    const res = document.getElementById('calcres'); if (res) res.innerHTML = calcRes(S.coin, a);
     return;
   }
   if (el.id === 'qq' || el.id === 'qp') {
@@ -2120,6 +2154,9 @@ document.addEventListener('input', (e) => {
   if (el.id === 'lt') { const tc = document.getElementById('tcount'); if (tc) tc.textContent = el.value.length + '/80'; return; }
   if (el.id === 'expsale') {
     S.expSale = el.value;
+    const a = analyze(S.coin, S.grades, S.confirmed, S.cost, null, S.expSale);
+    const tb = document.getElementById('tbcard'); if (tb) tb.innerHTML = tbInner(S.coin, a);
+    const pn = document.getElementById('calcres'); if (pn) pn.innerHTML = calcRes(S.coin, a);
     return;
   }
   if (el.id === 'paid') { S.paid = el.value; return; }
@@ -2166,7 +2203,7 @@ document.addEventListener('change', (e) => {
     if (v >= 0) { S.purchase.items[i].cost = v; save(); render(); }
   }
   if (el.id === 'lm') render();
-  if (el.id === 'expsale') render();
+  if (el.id === 'expsale' && !S.editMarket) render();
 });
 
 // Live spot (standalone app): replaces the sample spot when available.
