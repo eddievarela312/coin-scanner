@@ -1175,8 +1175,7 @@ function tbPanel(c, a) {
     ${c.skipGrade
       ? `<span class="eyebrow" style="margin-top:8px">Your margin</span>${chips('marginBullion', [3, 5, 8, 10, 15])}`
       : a.metalBlend
-        ? `<span class="eyebrow" style="margin-top:8px">Margin on the ${metalWord}</span>${chips('marginBullion', [3, 5, 8, 10, 15])}
-           <span class="eyebrow" style="margin-top:4px">Margin on the premium</span>${chips('marginNumis', [15, 20, 25, 30, 35])}`
+        ? `<span class="eyebrow" style="margin-top:8px">Your margin <span class="muted" style="text-transform:none;letter-spacing:0;font-weight:500">· ${metalWord} coin</span></span>${chips('marginBullion', [3, 5, 8, 10, 15])}`
         : `<span class="eyebrow" style="margin-top:8px">Your margin</span>${chips('marginNumis', [15, 20, 25, 30, 35])}`}
     <span class="eyebrow" style="margin-top:8px">Selling on</span>
     <div class="seg5">${[['none', 'No fees'], ['ebay', 'eBay'], ['whatnot', 'Whatnot']].concat(ch === 'custom' ? [['custom', 'Custom']] : []).map(([k, l]) => `<button class="${ch === k ? 'on' : ''}" data-a="feeChannel" data-ch="${k}">${l}</button>`).join('')}</div>
