@@ -135,9 +135,11 @@ tr.hl td{background:var(--accent-soft)}
 .howto div{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 4px;display:flex;flex-direction:column;gap:2px}
 .howto b{font-family:var(--f-display);font-size:1.1rem;color:var(--accent)}
 .pricepair .card{gap:6px;padding:14px}
+.pricepair .eyebrow{white-space:nowrap;margin:0}
 .pp{font-family:var(--f-display);font-weight:700;font-size:1.75rem;line-height:1.05;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
 .note{border-radius:12px;background:var(--warn-soft);border:1px solid var(--warn);color:var(--ink)}
 .note.strong{background:var(--accent);border-color:var(--accent);color:#fff}
+.note.strong .btn-link{color:#fff;text-decoration:underline}
 .note summary{color:inherit;font-weight:400;list-style:none;display:flex;align-items:center;gap:8px;padding:10px 12px;cursor:pointer;min-height:44px}
 .note summary::-webkit-details-marker{display:none}
 .note .ni{width:20px;text-align:center}
@@ -203,6 +205,10 @@ tr.hl td{background:var(--accent-soft)}
 .sheet{animation:enter .18s ease-out both}
 button:active{transform:scale(.98)}
 @media (prefers-reduced-motion:reduce){#app.enter > *,.sheet{animation:none}button:active{transform:none}}
+.chg{background:var(--accent);color:#fff;font-weight:700;font-size:.68rem;letter-spacing:.02em;padding:3px 9px;border-radius:999px;white-space:nowrap}
+.issues td,.issues th{padding:7px 6px;font-size:.88rem}
+.issues tr.cur td{background:var(--accent-soft);font-weight:700}
+.issues .lowtag{font-size:.65rem;font-weight:700;color:var(--warn);margin-left:4px}
 .confirmbox{border:1px solid var(--bad);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:10px}
 </style>
 
@@ -595,7 +601,7 @@ function rarityBanner(c) {
   const r = rarityOf(c); if (!r) return '';
   const strong = r.level === 'key' || r.level === 'semi-key';
   return note(strong ? 'strong' : 'warn', strong ? '🔑' : '⚑', RARITY[r.level], "Don't sell it short",
-    `${r.note ? `<span>${esc(r.note)}</span>` : ''}${r.check ? `<span><b>Check:</b> ${esc(r.check)}</span>` : ''}`);
+    `${r.note ? `<span>${esc(r.note)}</span>` : ''}${r.check ? `<span><b>Check:</b> ${esc(r.check)}</span>` : ''}${issuesLink(c, 'Compare all dates &amp; mintages')}`);
 }
 
 /* ---------- scan history (on this phone) ---------- */
@@ -1065,7 +1071,7 @@ function priceCheck(c, a) {
   const lo = Math.max(Math.min(...parts.map((p) => +p[0])), a.melt || 0), hi = Math.max(rawHi, a.melt || 0);
   const src = a.range.source === 'cpg' ? 'CPG' : 'Numista';
   const input = '';
-  if (lo > a.range.high * 1.4) return note('warn', '↑', 'May be worth more', 'Check comps', `<span>Our estimate for this exact date is about ${money(lo)}–${money(hi)}. The ${src} figure may be pricing it like a common date. Check eBay sold comps and enter what they show.</span>`);
+  if (lo > a.range.high * 1.4) return note('warn', '↑', 'May be worth more', 'Check comps', `<span>Our estimate for this exact date is about ${money(lo)}–${money(hi)}. The ${src} figure may be pricing it like a common date. Check eBay sold comps and enter what they show.</span>${issuesLink(c, 'Compare all dates &amp; mintages')}`);
   if (hi < a.range.low * 0.6) return note('warn', '↓', 'May be worth less', 'Check comps', `<span>Our estimate is about ${money(lo)}–${money(hi)}, below the ${src} figure. Check eBay sold comps before paying the target buy.</span>`);
   return '';
 }
@@ -1081,10 +1087,10 @@ function marketInner(c, a) {
     <div class="row between" style="gap:6px"><button class="btn-link small" data-a="clearExp" style="padding:0">Use estimate</button><button class="btn-primary" data-a="editMarketDone" style="min-height:34px;padding:4px 14px;font-size:.85rem">Done</button></div>`;
   const src = a.limited ? `Our estimate${a.range && a.range.aiFrom ? ` (at ${a.range.aiFrom})` : ''}` : a.range ? `${shortBasis(a.range)}${!a.confirmed ? ' · grade not confirmed' : ''}` : '';
   return `
-    <div class="row between"><span class="eyebrow">Market</span>${a.limited ? '<span class="pill warn" style="font-size:.68rem;padding:2px 8px">AI est.</span>' : a.range && a.range.source === 'dealer' ? '<span class="pill good" style="font-size:.68rem;padding:2px 8px">Yours</span>' : ''}</div>
+    <div class="row between"><span class="row" style="gap:6px"><span class="eyebrow">Market</span>${a.limited ? '<span class="pill warn" style="font-size:.62rem;padding:1px 6px">AI est.</span>' : a.range && a.range.source === 'dealer' ? '<span class="pill good" style="font-size:.62rem;padding:1px 6px">Yours</span>' : ''}</span><span class="chg">Change</span></div>
     <span class="pp"${a.limited ? ' style="color:var(--warn)"' : ''}>${a.range ? range$(a.range) : '—'}</span>
     <span class="small muted">${esc(src)}</span>
-    ${seasoned() ? '' : '<span class="small tapnote">✎ Tap to adjust</span>'}`;
+`;
 }
 function profitText(a) {
   if (!(a.targetBuy && a.range)) return '';
@@ -1095,13 +1101,13 @@ function profitText(a) {
 const feeShort = () => feeOn() ? `${FEE_NAMES[S.settings.fee.channel] || 'Custom'} fees` : 'no fees';
 // Target buy card: tap to open margin, fees and "what would you pay".
 function tbInner(c, a) {
-  const head = `<div class="row between"><span class="eyebrow">Target buy</span><span class="chev" aria-hidden="true">${S.tbOpen ? '▴' : '▾'}</span></div>`;
+  const head = `<div class="row between"><span class="eyebrow">Target buy</span><span class="chg">${S.tbOpen ? 'Close' : 'Change'}</span></div>`;
   if (a.hideTarget) return head + `<span class="pp" style="font-size:1.15rem">Pick a grade</span><span class="small muted">Tap the grade above</span>`;
   if (a.targetBuy == null) return head + `<span class="pp">—</span><span class="small muted">Tap Market to enter a price</span>`;
   const pt = profitText(a);
   return head + `<span class="pp"${a.limited ? ' style="color:var(--warn)"' : ''}>${a.limited ? '~' : ''}${money(a.targetBuy)}</span>
     <span class="small muted">${pct(a.margin)} margin · ${feeShort()}${pt ? ` · profit ${pt}` : ''}</span>
-    ${seasoned() ? '' : `<span class="small tapnote">${S.tbOpen ? 'Tap to close' : '▾ Margin, fees, your offer'}</span>`}`;
+`;
 }
 function tbPanel(c, a) {
   const key = c.skipGrade ? 'marginBullion' : 'marginNumis';
@@ -1228,6 +1234,27 @@ screens.sales = () => {
 `;
 };
 
+const issuesOf = (c) => (c && c.lookup && c.lookup.numista && c.lookup.numista.matched && !c.catalogConflict && c.lookup.numista.issues) || [];
+const issuesLink = (c, label) => issuesOf(c).length > 1 ? `<button class="btn-link small" data-a="openIssues" style="padding:0;align-self:flex-start">${label || 'See all dates, mints &amp; mintages'} ›</button>` : '';
+screens.issues = () => {
+  const c = S.coin; const n = c.lookup && c.lookup.numista; const list = issuesOf(c);
+  const curId = n && n.issue && n.issue.id;
+  const y = parseInt(c.year, 10), mm = String(c.mint || '').split(/\s/)[0].toUpperCase();
+  const isCur = (i) => curId ? i.id === curId : i.year === y && (!i.mint || i.mint.toUpperCase() === mm);
+  const withM = list.filter((i) => i.mintage).map((i) => i.mintage).sort((a, b) => a - b);
+  const lowCut = withM.length >= 4 ? withM[Math.min(2, withM.length - 1)] : 0;
+  return `
+  <div class="topbar"><button class="back" data-a="go" data-s="${S.issuesBack || 'details'}">Back</button></div>
+  <p class="eyebrow">All dates &amp; mints</p>
+  <h2>${esc(n ? n.title : c.name)}</h2>
+  <p class="small muted">${list.length} issues · mintages from <a href="${esc(c.numistaUrl || '#')}" target="_blank" rel="noopener" style="color:var(--accent)">Numista ${esc(c.numista || '')}</a>. Your coin is highlighted; <span style="color:var(--warn);font-weight:700">Low</span> marks the lowest mintages.</p>
+  <div class="card" style="padding:6px"><div class="tablewrap"><table class="issues">
+    <thead><tr><th>Year</th><th>Mint</th><th class="r">Mintage</th></tr></thead>
+    <tbody>${list.map((i) => `<tr class="${isCur(i) ? 'cur' : ''}"><td class="num">${esc(i.year || '?')}${i.note ? `<br><span class="small muted">${esc(i.note)}</span>` : ''}</td><td>${esc(i.mint || '—')}</td><td class="r num">${i.mintage ? i.mintage.toLocaleString('en-US') : '—'}${i.mintage && lowCut && i.mintage <= lowCut ? '<span class="lowtag">Low</span>' : ''}</td></tr>`).join('')}</tbody>
+  </table></div></div>
+  <p class="small muted">Mintage is a guide to scarcity, not price. Check sold comps for the date you have.</p>`;
+};
+
 screens.details = () => {
   const c = S.coin;
   const rows = [['Country', c.country], ['Denomination', c.denomination], ['Year', c.year], ['Mint', c.mint],
@@ -1251,6 +1278,7 @@ screens.details = () => {
   ${gsNote ? `<p class="small muted">${esc(gsNote)}</p>` : ''}
   ${c.numistaUrl ? `<a class="btn btn-ghost btn-wide" href="${esc(c.numistaUrl)}" target="_blank" rel="noopener">Compare with Numista photos · ${esc(c.numista)} ›</a>` : ''}
   ${numistaNote ? `<p class="small muted">${esc(numistaNote)}</p>` : ''}
+  ${issuesOf(c).length > 1 ? `<button class="btn-ghost btn-wide" data-a="openIssues">All dates, mints &amp; mintages (${issuesOf(c).length}) ›</button>` : ''}
   <div class="card"><table><tbody>${rows.map(([k, v]) => `<tr><th>${k}</th><td class="num">${esc(v)}</td></tr>`).join('')}</tbody></table>
   <p class="small muted">${c.source === 'ai' ? (c.numistaUrl ? `Specs from Numista: <a href="${esc(c.numistaUrl)}" target="_blank" rel="noopener" style="color:var(--accent)">${esc(c.numista)}</a>.${c.gsName ? ` Pricing matched to Greysheet: ${esc(c.gsName)}.` : ''}` : 'Specs are our best estimate; no Numista match found. Verify before relying on them.') : 'Specs: Numista (sample values in this prototype).'}</p></div>`;
 };
@@ -2036,6 +2064,7 @@ document.addEventListener('click', (e) => {
     }
     return enterPrice();
   }
+  if (a === 'openIssues') { S.issuesBack = S.screen; return go('issues'); }
   if (a === 'pickGrade') { S.grades = [t.dataset.g]; S.confirmed = true; return render(); }
   if (a === 'notMine') {
     if (S.scanId && !S.feedback) sendFeedback({ scan_id: S.scanId, correct: 'no' });
