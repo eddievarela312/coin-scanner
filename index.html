@@ -940,6 +940,7 @@ screens.match = () => {
   <div class="topbar"><button class="back" data-a="go" data-s="fields">Edit details</button><span class="pill ${conf === 'High' ? 'good' : 'warn'}">${conf} confidence</span></div>
   <p class="eyebrow">Match found</p>
   <h2>${esc(c.name)}</h2>
+  ${rarityBanner(c)}
   <div class="grid2">
     <div class="tile"><span class="eyebrow">Your photos</span><div class="thumbs">${['obv', 'rev'].map((s) => S.photos[s] ? `<img src="${S.photos[s]}" alt="" style="width:56px;height:56px">` : `<div class="ph" style="width:56px;height:56px">—</div>`).join('')}</div></div>
     <div class="tile"><span class="eyebrow">Reference</span><span class="small muted">Numista images appear here once connected</span></div>
