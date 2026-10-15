@@ -849,7 +849,11 @@ screens.lots = () => {
   <p class="small muted">Use a lot for a table or seller with several coins: it stays <b>Negotiating</b> until you mark it <b>Bought</b>. One-coin deals go to Single buys.</p>
   ${sg ? `<div class="list">${row(sg)}</div>` : ''}
   <div class="list">${lots.map(row).join('') || '<p class="muted">No lots yet. Save a scanned coin to a lot, or start one here.</p>'}</div>
-  <button class="btn-ghost btn-wide" data-a="newLot">+ New lot</button>`;
+  <button class="btn-ghost btn-wide" data-a="newLot">+ New lot</button>
+  ${S.lots.some((l) => l.items.length || l.kind !== 'singles') ? (S.confirmLotsClear
+    ? `<div class="confirmbox"><b>Clear all lots and single buys?</b><span class="small">This deletes every lot and single buy on this phone. Scan history is kept. This can't be undone.</span>
+       <div class="grid2"><button class="btn-ghost" data-a="lotsClearCancel">Keep</button><button class="btn-primary" data-a="lotsClear" style="background:var(--bad);color:#fff">Clear all</button></div></div>`
+    : '<button class="btn-link btn-wide" data-a="lotsClearAsk" style="color:var(--bad)">Clear all lots &amp; buys</button>') : ''}`;
 };
 
 screens.capture = () => {
@@ -1722,7 +1726,7 @@ function render() {
   window.scrollTo(0, 0);
 }
 function animateEnter() { const el = document.getElementById('app'); el.classList.remove('enter'); void el.offsetWidth; el.classList.add('enter'); }
-function go(s) { if (s === 'settings' || s === 'lots') prevScreen = S.screen; const changed = s !== S.screen; if (changed) S.confirmClear = false; S.screen = s; render(); if (changed) animateEnter(); }
+function go(s) { if (s === 'settings' || s === 'lots') prevScreen = S.screen; const changed = s !== S.screen; if (changed) { S.confirmClear = false; S.confirmLotsClear = false; } S.screen = s; render(); if (changed) animateEnter(); }
 
 /* ---------- photos ---------- */
 function shrink(file, max, cb) {
@@ -2136,6 +2140,9 @@ document.addEventListener('click', (e) => {
     }
     return enterPrice();
   }
+  if (a === 'lotsClearAsk') { S.confirmLotsClear = true; return render(); }
+  if (a === 'lotsClearCancel') { S.confirmLotsClear = false; return render(); }
+  if (a === 'lotsClear') { S.lots = []; S.purchase = null; S.sessionLot = null; S.added = false; S.confirmLotsClear = false; save(); return render(); }
   if (a === 'openIssues') { S.issuesBack = S.screen; return go('issues'); }
   if (a === 'pickGrade') { S.grades = [t.dataset.g]; S.confirmed = true; return render(); }
   if (a === 'notMine') {
