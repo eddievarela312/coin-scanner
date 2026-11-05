@@ -40,7 +40,8 @@ Reply with only this JSON object:
  "rough_value_usd": {"VF": [60, 80]},
  "photo_feedback": "",
  "rarity": {"level": "", "note": "", "check": ""},
- "countermark": null
+ "countermark": null,
+ "collector_tips": []
 }
 Rules:
 - identified: false if you cannot tell what the coin is.
@@ -54,6 +55,7 @@ Rules:
 - candidates: 2 to 3 OTHER likely coins, including close dates, mint marks and varieties, each with a short reason.
 - rough_value_usd: must be for THIS exact date and mint, not the type in general (key and scarce dates sell well above common dates). Approximate typical US retail ranges for the grades in question, from general knowledge, only where you have a reasonable sense; otherwise {}. These are shown to the dealer labeled as rough estimates.
 - weights in grams, ASW/AGW in troy ounces.
+- collector_tips: 1 to 3 short, specific tips an owner should know about THIS coin (e.g. whether grading is likely worth it, the counterfeit or variety to check, don't clean it). Each under 18 words. No generic advice.
 - Keep it short: this JSON is read on a phone mid-negotiation. grade_note under 12 words; each candidate "why" under 10 words; photo_feedback under 12 words. No text outside the JSON.
 - countermark: null, or when the coin carries a countermark/counterstamp/chop/overstrike: {"description": "e.g. Guatemala 1838 sun-over-volcano countermark", "issuer": "who applied it, if known", "host": "the underlying coin, e.g. Peru 8 Reales 1830s"}. Look carefully for small punched marks on either side. For countermarked coins, follow how catalogs (Krause, Numista) list them: under the COUNTERMARKING country. coin_name names both (e.g. "Guatemala 1894 countermark on Peru 1 Sol 1885"); country = the countermarking country (Guatemala); year = the countermark's date if it has one (1894), else the host's date; denomination = the host coin's denomination (1 Sol); km_number = the countermarked piece's KM number if known, not the host's; put the host's country, date and mint in countermark.host; numista_query = words like "countermarked Sol" or "countermark"; and rough_value_usd prices the countermarked piece (the countermark usually drives the value; authenticity of the mark matters most).
 - photo_feedback: one short tip if the photos limited you (glare, blur, too small), else "".
@@ -91,6 +93,7 @@ Reply with only this JSON object:
  "candidates": [{"card_name": "", "why": ""}],
  "rough_value_usd": {"NM": [10, 20]},
  "notable": {"level": "", "note": "", "check": ""},
+ "collector_tips": [],
  "photo_feedback": ""
 }
 Rules:
@@ -100,6 +103,7 @@ Rules:
 - suggested_condition for raw cards: one of NM, LP, MP, HP, DMG (near mint, lightly/moderately/heavily played, damaged). Judge from corners, edges, surface and centering. For graded cards use "".
 - rough_value_usd: typical recent US sale prices for THIS exact card and variant, from general knowledge, only where you have a reasonable sense; otherwise {}. For raw cards use condition keys (NM, LP, MP, HP, DMG) for the conditions in question; for graded cards use the key "GRADED" for this card at its slab grade. Card prices change fast, so treat this as a rough guide; the dealer checks sold comps.
 - notable: flag cards a reseller must not undervalue. level is "rookie" (a true rookie card), "numbered" (serial-numbered), "short_print" (short print, SSP or case hit), "key" (a chase card, key card of the set or iconic card), "error" (a known error or misprint variety), or "" for ordinary cards. note: one short sentence on why. check: one short sentence on what to verify (e.g. reprint vs original, fake slab, trimmed edges). Use "" when level is "".
+- collector_tips: 1 to 3 short, specific tips an owner should know about THIS card (e.g. whether grading is likely worth it at this condition and value, how to tell an original from a reprint or fake, which variant to double-check). Each under 18 words. No generic advice.
 - candidates: 2 to 3 OTHER likely cards or variants (e.g. other parallels, reprints, 1st Edition vs Unlimited), each with a short reason.
 - Keep it short: condition_note under 12 words; each candidate "why" under 10 words; photo_feedback under 12 words. No text outside the JSON.`;
 
