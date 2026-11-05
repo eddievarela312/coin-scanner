@@ -27,7 +27,22 @@ export default async function handler(req, res) {
     Countermark: c.countermark,
   }).filter(([, v]) => v != null && v !== '').map(([k, v]) => `${k}: ${String(v).slice(0, 200)}`).join('\n');
 
-  const prompt = `Write an eBay listing for this coin for a professional coin dealer. Use ONLY the facts below; never invent varieties, pedigrees, mintages or grades.
+  const cardFacts = Object.entries({
+    Card: c.name, 'Game or sport': c.game, Year: c.year, Brand: c.brand, Set: c.set, 'Card number': c.card_number,
+    'Player or character': c.subject, 'Variant / parallel': c.variant, 'Serial number': c.serial, Language: c.language,
+    Rookie: c.rookie ? 'yes' : undefined, Condition: c.grade, 'Grading company': c.slab && c.slab.service,
+    'Slab grade': c.slab && c.slab.grade, 'Cert number': c.slab && c.slab.cert, Notable: c.rarity,
+  }).filter(([, v]) => v != null && v !== '').map(([k, v]) => `${k}: ${String(v).slice(0, 200)}`).join('\n');
+  const cardPrompt = `Write an eBay listing for this trading or sports card for a professional reseller. Use ONLY the facts below; never invent parallels, serial numbers, grades or print runs.
+
+${cardFacts}
+
+Rules:
+- title: at most 80 characters. Lead with year, brand/set, player or character, card number, and variant/parallel. Include "RC" for rookies, the serial number (e.g. "/99"), and the slab (e.g. "PSA 10") when known. No emoji, no "L@@K", no "rare" unless it is a recognized key card.
+- item_specifics: an object using eBay trading card fields where known: "Game" or "Sport", "Player/Athlete" or "Character", "Manufacturer", "Set", "Card Number", "Year Manufactured", "Parallel/Variety", "Features" (e.g. Rookie, Serial Numbered), "Print Run", "Language", "Graded" (Yes/No), "Professional Grader", "Grade", "Certification Number", "Card Condition" (for raw cards: Near Mint or Better, Lightly Played, Moderately Played, Heavily Played, Damaged). Omit unknowns.
+- description: 2 short paragraphs of plain text. Describe the card factually. For raw cards, say the condition is the seller's opinion and buyers should judge from the photos. For graded cards, mention the grading company, grade and cert number. Do not mention prices, price guides, data sources, or that the text was generated.
+Reply with only JSON: {"title": "...", "item_specifics": {...}, "description": "..."}`;
+  const coinPrompt = `Write an eBay listing for this coin for a professional coin dealer. Use ONLY the facts below; never invent varieties, pedigrees, mintages or grades.
 
 ${facts}
 
@@ -36,6 +51,7 @@ Rules:
 - item_specifics: an object using eBay coin fields where known: "Certification" ("Uncertified" for raw coins), "Grade", "Year", "Mint Location", "Denomination", "Composition", "Circulated/Uncirculated", "Country/Region of Manufacture", "Coin", "KM Number". Omit unknowns.
 - description: 2 short paragraphs of plain text. Describe the coin factually. For raw coins, say the grade is the seller's opinion and buyers should judge from the photos. For slabbed coins, mention the service, grade and cert number. Do not mention prices, price guides, data sources, or that the text was generated.
 Reply with only JSON: {"title": "...", "item_specifics": {...}, "description": "..."}`;
+  const prompt = c.kind === 'card' ? cardPrompt : coinPrompt;
 
   try {
     const r = await fetch('https://api.anthropic.com/v1/messages', {

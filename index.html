@@ -138,7 +138,9 @@ tr.hl td{background:var(--accent-soft)}
 .howto b{font-family:var(--f-display);font-size:1.1rem;color:var(--accent)}
 .pricepair{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
 .pricepair .card{gap:6px;padding:14px;min-width:0}
-.pricepair .eyebrow{white-space:nowrap;margin:0}
+.pricepair .eyebrow{white-space:nowrap;margin:0;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.pricepair .row.between{gap:6px;flex-wrap:nowrap}
+.pricepair .chg{flex:none;padding:3px 8px}
 .pp{font-family:var(--f-display);font-weight:700;font-size:1.75rem;line-height:1.05;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
 .note{border-radius:12px;background:var(--warn-soft);border:1px solid var(--warn);color:var(--ink)}
 .note.strong{background:var(--accent);border-color:var(--accent);color:#fff}
@@ -565,7 +567,9 @@ const save = () => { store.set('cs.settings', S.settings); store.set('cs.lots', 
 //  eBay Coins & Paper Money: 13.25% up to $7,500 + 2.35% above; Bullion 13.6% (7% if over $7,500); per-order $0.40 ($0.30 if $10 or less).
 //  Whatnot Coins: 4% commission + 2.9% payment processing + $0.30 per order (processing also applies to buyer-paid shipping and tax).
 const FEE_PRESETS = { none: { pct: 0, fixed: 0 }, ebay: { pct: 13.25, fixed: 0.40 }, whatnot: { pct: 6.9, fixed: 0.30 } };
-const FEE_DESC = { ebay: '13.25% + $0.40 per order (eBay Coins & Paper Money; bullion 13.6%)', whatnot: '6.9% + $0.30 per order (Whatnot Coins: 4% commission + 2.9% processing)' };
+const FEE_DESC_COINS = { ebay: '13.25% + $0.40 per order (eBay Coins & Paper Money; bullion 13.6%)', whatnot: '6.9% + $0.30 per order (Whatnot Coins: 4% commission + 2.9% processing)' };
+const FEE_DESC_CARDS = { ebay: '13.25% + $0.40 per order (eBay Trading Cards)', whatnot: '10.9% + $0.30 per order (Whatnot cards: 8% commission + 2.9% processing)' };
+const FEE_DESC = new Proxy({}, { get: (_, k) => ((S.settings && S.settings.mode === 'cards') ? FEE_DESC_CARDS : FEE_DESC_COINS)[k] });
 // Keep saved platform rates in step with the current coin-category rates.
 if (FEE_PRESETS[S.settings.fee.channel] && S.settings.fee.channel !== 'none') Object.assign(S.settings.fee, FEE_PRESETS[S.settings.fee.channel]);
 const FEE_NAMES = { ebay: 'eBay', whatnot: 'Whatnot', custom: 'selling' };
@@ -577,7 +581,7 @@ function feeOf(sale, bullion) {
     const pct = bullion ? (sale > 7500 ? 0.07 * sale : 0.136 * sale) : 0.1325 * Math.min(sale, 7500) + 0.0235 * Math.max(0, sale - 7500);
     return pct + (sale <= 10 ? 0.30 : 0.40);
   }
-  if (ch === 'whatnot') return sale * 0.069 + 0.30;
+  if (ch === 'whatnot') return sale * (cardsMode() ? 0.109 : 0.069) + 0.30;
   return sale * (+S.settings.fee.pct || 0) / 100 + (+S.settings.fee.fixed || 0);
 }
 const feeNote = () => feeOn() ? `after ${FEE_NAMES[S.settings.fee.channel] || 'selling'} fees` : '';
@@ -601,10 +605,12 @@ function itemFromCurrent(cost, status) {
   if (S.coin.source === 'ai') { item.coin = S.coin; item.expSale = S.expSale; }
   return item;
 }
-const RARITY = { key: 'Key date', 'semi-key': 'Semi-key date', variety: 'Check for a variety', scarce: 'Scarce issue', lowmintage: 'Low mintage' };
+const RARITY = { key: 'Key date', 'semi-key': 'Semi-key date', variety: 'Check for a variety', scarce: 'Scarce issue', lowmintage: 'Low mintage',
+  rookie: 'Rookie card', numbered: 'Serial-numbered', short_print: 'Short print', error: 'Error card' };
 function rarityOf(c) {
   if (!c) return null;
   if (c.rarity && RARITY[c.rarity.level]) return c.rarity;
+  if (isCard(c)) return null;
   const n = c.issueMintage || parseInt(String(c.mintage || '').replace(/[^0-9]/g, ''), 10);
   const st = c.seriesStats;
   if (!c.skipGrade && n > 0 && st && st.withMintage >= 3 && (n <= st.median * 0.35 || n === st.min)) {
@@ -626,8 +632,8 @@ function countermarkBanner(c) {
 }
 function rarityBanner(c) {
   const r = rarityOf(c); if (!r) return '';
-  const strong = r.level === 'key' || r.level === 'semi-key';
-  return note(strong ? 'strong' : 'warn', strong ? '🔑' : '⚑', RARITY[r.level], "Don't sell it short",
+  const strong = ['key', 'semi-key', 'rookie', 'numbered', 'short_print'].includes(r.level);
+  return note(strong ? 'strong' : 'warn', strong ? '🔑' : '⚑', isCard(c) && r.level === 'key' ? 'Key card' : RARITY[r.level], "Don't sell it short",
     `${r.note ? `<span>${esc(r.note)}</span>` : ''}${r.check ? `<span><b>Check:</b> ${esc(r.check)}</span>` : ''}${issuesLink(c, 'Compare all dates &amp; mintages')}`);
 }
 
@@ -654,7 +660,7 @@ const money = (n) => n == null || isNaN(n) ? '—'
 const range$ = (r) => r ? (money(r.low) === money(r.high) ? money(r.low) : `${money(r.low)}–${money(r.high)}`) : '—';
 const pct = (x) => x == null ? '—' : Math.round(x * 100) + '%';
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-const gradeLabel = (coin, grades) => coin.skipGrade ? 'Grade not needed' : grades.length > 1 ? `${grades[0]}–${grades[grades.length - 1]}` : grades[0];
+const gradeLabel = (coin, grades) => coin.kind === 'card' ? (coin.slab ? `${coin.slab.service} ${coin.slab.grade}` : (grades || [])[0] || 'Raw') : coin.skipGrade ? 'Grade not needed' : grades.length > 1 ? `${grades[0]}–${grades[grades.length - 1]}` : grades[0];
 const tone = (status) => ({ Likely: 'good', Possible: 'warn', Unlikely: 'bad', Fast: 'good', Moderate: 'warn', Slow: 'bad' }[status] || 'neutral');
 
 /* ---------- derived values for one coin ---------- */
@@ -669,7 +675,8 @@ function aiParts(coin, g) {
   if (parts.length) return { parts, from: null };
   const keys = Object.keys(av).filter((k) => ok(av[k]));
   if (!keys.length) return { parts: [], from: null };
-  const idx = (k) => (GRADES.indexOf(k) < 0 ? 99 : GRADES.indexOf(k));
+  const list = coin.kind === 'card' ? CARD_GRADES : GRADES;
+  const idx = (k) => (list.indexOf(k) < 0 ? 99 : list.indexOf(k));
   const target = Math.min(...g.map(idx));
   const best = keys.sort((a, b) => Math.abs(idx(a) - target) - Math.abs(idx(b) - target))[0];
   return { parts: [av[best]], from: best };
@@ -788,14 +795,19 @@ screens.home = () => {
     <h1>Pocketmint ID</h1>
     <p class="muted">Scan it. Price it. Buy it. List it.</p>
   </div>
-  ${spot().live ? '' : `<div class="banner">Spot is a sample right now. Set today's price in Settings.</div>`}
-  <button class="btn-primary btn-wide" data-a="scan">Scan a coin</button>
+  ${spot().live || cardsMode() ? '' : `<div class="banner">Spot is a sample right now. Set today's price in Settings.</div>`}
+  ${cardsMode() ? '<span class="pill good" style="align-self:flex-start;margin-top:-6px">🃏 Cards mode</span>' : ''}
+  <button class="btn-primary btn-wide" data-a="scan">Scan a ${cardsMode() ? 'card' : 'coin'}</button>
   <button class="btn-ghost btn-wide" data-a="go" data-s="lots">Lots &amp; buys${S.lots.filter((l) => l.items.length).length ? ` (${S.lots.filter((l) => l.items.length).length})` : ''}</button>
   ${recent.length ? '' : `<button class="tourcta" data-a="tourStart"><span style="font-size:1.6rem" aria-hidden="true">▶</span><span><b>New here? Take the 30-second tour</b><span class="small muted">See how scanning, pricing and lots work</span></span></button>`}
   ${recent.length ? `<div class="card"><div class="row between"><span class="eyebrow">Recent scans</span><button class="btn-link small" data-a="go" data-s="history">See all ${S.history.length} ›</button></div>
     <div class="mini">${recent.map((h) => histMini(h)).join('')}</div></div>` : ''}
-  <p class="small muted">Spot: silver ${money(spot().silver)} · gold ${money(spot().gold)} (${esc(spot().asOf)})</p>
-  <div class="row between"><button class="btn-link small" data-a="tourStart">How it works</button><button class="btn-link small" data-a="demo">Try the sample coins</button></div>`;
+  ${cardsMode() ? '' : `<p class="small muted">Spot: silver ${money(spot().silver)} · gold ${money(spot().gold)} (${esc(spot().asOf)})</p>`}
+  ${S.modeAsk ? `<div class="sheet"><b>Switch to ${cardsMode() ? 'coins' : 'cards'} mode?</b>
+      <span class="small muted">${cardsMode() ? 'Scans will identify coins again, with melt, CPG and Numista.' : 'Scans will identify trading cards and sports cards, raw or graded. Prices are estimates; check eBay and TCGplayer comps before you buy.'} Your lots and history stay.</span>
+      <div class="grid2"><button class="btn-ghost" data-a="modeCancel">Cancel</button><button class="btn-primary" data-a="modeSwitch">Switch</button></div></div>`
+    : `<button class="btn-ghost btn-wide" data-a="modeAsk">${cardsMode() ? '🪙 Switch to coins mode' : '🃏 Switch to cards mode'}</button>`}
+  <div class="row between"><button class="btn-link small" data-a="tourStart">How it works</button>${cardsMode() ? '' : '<button class="btn-link small" data-a="demo">Try the sample coins</button>'}</div>`;
 };
 
 // One-line row for the home screen.
@@ -862,7 +874,7 @@ screens.capture = () => {
   return `
   <div class="topbar"><button class="back" data-a="go" data-s="home">Cancel</button><span class="small muted">Step ${side === 'obv' ? 1 : 2} of 2</span></div>
   <div class="steps"><span class="on"></span><span class="${side === 'rev' ? 'on' : ''}"></span></div>
-  <h2>${side === 'obv' ? 'Photograph the front' : 'Flip the coin over'}</h2>
+  <h2>${side === 'obv' ? 'Photograph the front' : `Flip the ${cardsMode() ? 'card' : 'coin'} over`}</h2>
   <label class="capture" for="cam">
     ${img ? `<img src="${img}" alt="">` : `<div class="ring">Tap to take a photo<br><span class="small">Center the coin in the circle</span></div>`}
   </label>
@@ -917,9 +929,11 @@ screens.fields = () => {
   <div class="topbar"><button class="back" data-a="scan">Retake photos</button></div>
   <div class="thumbs">${['obv', 'rev'].map((s) => S.photos[s] ? `<img src="${S.photos[s]}" alt="">` : `<div class="ph">${s === 'obv' ? 'Front' : 'Back'}</div>`).join('')}</div>
   <h2>Here's what we read</h2>
-  <p class="muted" style="margin-top:-8px">Check these against the coin. Fix anything that's off.</p>
+  <p class="muted" style="margin-top:-8px">Check these against the ${isCard(c) || cardsMode() ? 'card' : 'coin'}. Fix anything that's off.</p>
   ${c.countermark ? `<p class="small" style="margin:0"><b>Countermarked coin.</b> Host coin: ${esc(c.countermark.host || 'see below')}</p>` : ''}
-  <div class="stack">${c.countermark
+  <div class="stack">${isCard(c) || cardsMode()
+    ? field('country', 'Game or sport') + field('denomination', 'Set') + field('year', 'Year') + field('mint', 'Card number')
+    : c.countermark
     ? field('country', 'Countermark country') + field('year', 'Countermark year') + field('denomination', 'Host coin denomination') + field('mint', 'Host coin mint')
     : field('country', 'Country') + field('denomination', 'Denomination') + field('year', 'Year') + field('mint', 'Mint mark')}</div>
   <button class="btn-primary btn-wide" data-a="toMatch" id="fieldsGo">${fieldsEdited() || S.manual ? 'Search with my changes' : 'Looks right, continue'}</button>
@@ -979,7 +993,7 @@ function aiMatch(c) {
   ${photos}
   ${c.numistaUrl ? `<p class="small muted">Numista match: ${esc(c.numistaTitle || '')}</p>` + `<a class="btn btn-ghost btn-wide" href="${esc(c.numistaUrl)}" target="_blank" rel="noopener">Compare with Numista photos · ${esc(c.numista)} ›</a>` : c.lookupPending ? '<p class="small muted">Checking Numista…</p>' : ''}
   ${c.slab ? `<div class="tile"><span class="eyebrow">${esc(c.slab.service || 'Slab')} slab detected</span><b>${esc(c.slab.grade || 'Grade not read')}</b>${c.slab.cert ? `<span class="small muted num">Cert # ${esc(c.slab.cert)}</span>` : ''}
-    ${c.slab.service && /pcgs/i.test(c.slab.service) ? `<a class="small" href="https://www.pcgs.com/cert/${encodeURIComponent(c.slab.cert || '')}" target="_blank" rel="noopener" style="color:var(--accent)">Verify on PCGS</a>` : c.slab.service && /ngc/i.test(c.slab.service) ? `<a class="small" href="https://www.ngccoin.com/certlookup/" target="_blank" rel="noopener" style="color:var(--accent)">Verify on NGC</a>` : ''}</div>` : ''}
+    ${isCard(c) && CARD_CERT_URL(c.slab.service, c.slab.cert) ? `<a class="small" href="${CARD_CERT_URL(c.slab.service, c.slab.cert)}" target="_blank" rel="noopener" style="color:var(--accent)">Verify on ${esc(c.slab.service)} ↗</a>` : c.slab.service && /pcgs/i.test(c.slab.service) ? `<a class="small" href="https://www.pcgs.com/cert/${encodeURIComponent(c.slab.cert || '')}" target="_blank" rel="noopener" style="color:var(--accent)">Verify on PCGS</a>` : c.slab.service && /ngc/i.test(c.slab.service) ? `<a class="small" href="https://www.ngccoin.com/certlookup/" target="_blank" rel="noopener" style="color:var(--accent)">Verify on NGC</a>` : ''}</div>` : ''}
   ${c.varieties ? `<p class="small"><span class="flag">Variety:</span> Numista lists ${c.varieties.length} varieties for this year (${c.varieties.map(esc).join(' / ')}). Prices cover all of them until you confirm which.</p>` : ''}
   ${c.uncertain.length ? `<p class="small"><span class="flag">Check:</span> ${c.uncertain.map(esc).join(', ')}</p>` : ''}
   ${c.photoFeedback ? `<p class="small muted">${esc(c.photoFeedback)}</p>` : ''}
@@ -1032,6 +1046,7 @@ function feasBlock(a, coin) {
 
 // One line answering "what is it / what's in it".
 function identityLine(c) {
+  if (isCard(c)) return [c.set, c.card_number ? '#' + c.card_number : '', c.variant && !/^base$/i.test(c.variant) ? c.variant : '', c.serial, c.rookie ? 'RC' : ''].filter(Boolean).join(' · ');
   const parts = [];
   if (c.km) parts.push(c.km);
   const comp = String(c.composition || '').replace(/\s*\(.*\)\s*/, ' ').trim();
@@ -1052,7 +1067,7 @@ screens.money = () => {
     const w = (n) => (n < 0 ? '-$' : '$') + Math.abs(Math.round(n)).toLocaleString('en-US'); const L = w(lo), H = w(hi); return L === H ? `~${H}` : `~${L}–${H}`;
   })() : null;
   return `
-  <div class="topbar"><button class="back" data-a="go" data-s="home">Home</button>${c.source === 'ai' ? '<button class="btn-link small" data-a="notMine">Not my coin?</button>' : ''}</div>
+  <div class="topbar"><button class="back" data-a="go" data-s="home">Home</button>${c.source === 'ai' ? `<button class="btn-link small" data-a="notMine">Not my ${isCard(c) ? 'card' : 'coin'}?</button>` : ''}</div>
   <div class="idhead">
     ${S.photos && (S.photos.obv || S.photos.thumb) ? `<img src="${S.photos.obv || S.photos.thumb}" alt="">` : ''}
     <div class="stack" style="gap:3px;min-width:0">
@@ -1075,17 +1090,17 @@ screens.money = () => {
     <div class="card tapcard${S.tbOpen ? ' open' : ''}" id="tbcard" data-a="toggleTb" role="button" tabindex="0" aria-expanded="${S.tbOpen ? 'true' : 'false'}">${tbInner(c, a)}</div>
   </div>
   ${S.tbOpen ? `<div class="card" id="tbpanel">${tbPanel(c, a)}</div>` : ''}
-  <div class="row" style="gap:18px;margin-top:-4px">
+  ${isCard(c) ? '' : `<div class="row" style="gap:18px;margin-top:-4px">
     <span class="small"><span class="muted">Melt</span> <b class="num">${a.melt > 0 ? money(a.melt) : 'none'}</b></span>
     <span class="small"><span class="muted">CPG</span> ${c.countermark && !CM_RE.test(c.gsName || '') ? '<b>n/a for this countermark</b>' : a.cpg.length ? `<b class="num">${a.cpg.map(money).join('–')}</b> <a href="https://www.greysheet.com" target="_blank" rel="noopener" style="color:var(--accent)">via CDN</a>` : `<b>${c.lookupPending ? 'loading…' : 'not found'}</b>`}</span>
-  </div>
+  </div>`}
   ${priceCheck(c, a)}
   ${compsButton(c)}
 
   ${actionArea(a)}
 
 
-  <button class="btn-link" data-a="go" data-s="details" style="align-self:flex-start">Coin details ›</button>
+  <button class="btn-link" data-a="go" data-s="details" style="align-self:flex-start">${isCard(c) ? 'Card' : 'Coin'} details ›</button>
 `;
 };
 
@@ -1096,7 +1111,11 @@ function ebayUrl(c) {
   if (c.countermark && !/countermark|counterstamp|chop/i.test(q)) q += ' countermark';
   if (c.slab && c.slab.service && c.slab.grade) q += ` ${c.slab.service} ${c.slab.grade}`;
   q = q.replace(/\s+/g, ' ').trim();
-  return `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(q)}&_sacat=11116&LH_Sold=1&LH_Complete=1&_sop=13`;
+  return `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(q)}&_sacat=${isCard(c) ? 0 : 11116}&LH_Sold=1&LH_Complete=1&_sop=13`;
+}
+function tcgUrl(c) {
+  const q = [c.subject || '', c.set || '', c.card_number || ''].filter(Boolean).join(' ') || c.name;
+  return `https://www.tcgplayer.com/search/all/product?q=${encodeURIComponent(q.replace(/\s+/g, ' ').trim())}&view=grid`;
 }
 const shortBasis = (r) => r.source === 'cpg' ? 'CPG retail, via CDN' : r.source === 'numista' ? 'Numista estimate (can lag sales)' : r.source === 'dealer' ? 'your comps price' : r.basis;
 function catalogWarning(c) {
@@ -1119,7 +1138,9 @@ function priceCheck(c, a) {
   return '';
 }
 function compsButton(c) {
-  return `<a class="btn btn-wide comps" href="${ebayUrl(c)}" target="_blank" rel="noopener"><span>See eBay sold comps</span><span aria-hidden="true">↗</span></a>`;
+  const ebay = `<a class="btn btn-wide comps" href="${ebayUrl(c)}" target="_blank" rel="noopener"><span>${isCard(c) ? 'eBay sold' : 'See eBay sold comps'}</span><span aria-hidden="true">↗</span></a>`;
+  if (isCard(c) && isTCG(c)) return `<div class="grid2">${ebay}<a class="btn btn-wide comps" href="${tcgUrl(c)}" target="_blank" rel="noopener"><span>TCGplayer</span><span aria-hidden="true">↗</span></a></div>`;
+  return ebay;
 }
 
 // Market card: tap to type your own sale price (from comps). Live-updates the target buy.
@@ -1188,13 +1209,19 @@ function tbPanel(c, a) {
         : `<span class="eyebrow" style="margin-top:8px">Your margin</span>${chips('marginNumis', [15, 20, 25, 30, 35])}`}
     <span class="eyebrow" style="margin-top:8px">Selling on</span>
     <div class="seg5">${[['none', 'No fees'], ['ebay', 'eBay'], ['whatnot', 'Whatnot']].concat(ch === 'custom' ? [['custom', 'Custom']] : []).map(([k, l]) => `<button class="${ch === k ? 'on' : ''}" data-a="feeChannel" data-ch="${k}">${l}</button>`).join('')}</div>
-    ${feeOn() ? `<span class="small muted">${ch === 'ebay' ? '13.25% + $0.40 per sale' : ch === 'whatnot' ? '6.9% + $0.30 per sale' : `${S.settings.fee.pct}% + $${(+S.settings.fee.fixed).toFixed(2)} per sale`}</span>` : ''}
+    ${feeOn() ? `<span class="small muted">${ch === 'ebay' ? '13.25% + $0.40 per sale' : ch === 'whatnot' ? (cardsMode() ? '10.9% + $0.30 per sale (cards)' : '6.9% + $0.30 per sale') : `${S.settings.fee.pct}% + $${(+S.settings.fee.fixed).toFixed(2)} per sale`}</span>` : ''}
     <div id="calc" class="stack" style="gap:10px;margin-top:8px">${calcInner(c, a)}</div>
     ${greyLine(c, a)}`;
 }
 
 // Grade chips on the price screen (replaces the separate grade step).
 function gradeRow(c, a) {
+  if (isCard(c)) {
+    if (c.slab) return `<div class="gradeline"><span class="pill good">${esc(c.slab.service)} ${esc(c.slab.grade)}</span><span class="small muted">from the label</span>${c.slab.cert && CARD_CERT_URL(c.slab.service, c.slab.cert) ? `<a class="small" href="${CARD_CERT_URL(c.slab.service, c.slab.cert)}" target="_blank" rel="noopener" style="color:var(--accent);margin-left:auto">Verify cert ↗</a>` : ''}</div>`;
+    const sugg = c.suggestedGrades || [];
+    return `<div class="gradeline"><span class="eyebrow" style="margin:0">Condition</span>${a.confirmed ? `<span class="small muted">${CARD_GRADE_NAME[S.grades[0]] || ''}</span>` : '<span class="small" style="color:var(--warn)">suggested · tap to confirm</span>'}</div>
+    <div class="gchips" role="group" aria-label="Condition" style="grid-template-columns:repeat(5,1fr)">${CARD_GRADES.slice().reverse().map((g) => `<button class="${S.grades.includes(g) ? (a.confirmed ? 'on' : 'sugg on') : sugg.includes(g) ? 'sugg' : ''}" data-a="pickGrade" data-g="${g}">${g}</button>`).join('')}</div>`;
+  }
   if (c.skipGrade) return '<div class="gradeline"><span class="pill neutral">Bullion · priced by metal</span></div>';
   if (c.slab && GRADE_MAP(c.slab.grade)) return `<div class="gradeline"><span class="pill good">${esc(c.slab.service || 'Slab')} ${esc(c.slab.grade)}</span><span class="small muted">grade from the label</span></div>`;
   const sugg = c.suggestedGrades || [];
@@ -1252,7 +1279,7 @@ function actionArea(a) {
       <button class="btn-primary" data-a="sheet" data-v="bought">Bought it</button>
       <button class="btn-ghost" data-a="sheet" data-v="lot">Save to a lot</button>
     </div>
-    <button class="btn-ghost btn-wide" data-a="scan">Pass · scan next coin</button>
+    <button class="btn-ghost btn-wide" data-a="scan">Pass · scan next ${cardsMode() ? 'card' : 'coin'}</button>
     ${seasoned() ? '' : '<span class="small muted" style="text-align:center;margin-top:-6px">Every scan is kept in Recent scans either way.</span>'}`;
 }
 
@@ -1325,6 +1352,17 @@ screens.issues = () => {
 
 screens.details = () => {
   const c = S.coin;
+  if (isCard(c)) {
+    const rows = [['Game / sport', c.game], ['Year', c.year], ['Brand', c.brand], ['Set', c.set], ['Card #', c.card_number], ['Player / character', c.subject],
+      ['Variant', c.variant], ['Serial #', c.serial], ['Rookie', c.rookie ? 'Yes' : ''], ['Language', c.language],
+      ['Graded', c.slab ? `${c.slab.service} ${c.slab.grade}` : ''], ['Cert #', c.slab && c.slab.cert], ['Label', c.slab && c.slab.label_text], ['Condition note', c.gradeNote]].filter(([, v]) => v != null && v !== '');
+    return `
+    <div class="topbar"><button class="back" data-a="go" data-s="money">Back</button></div>
+    <h2>${esc(c.name)}</h2>
+    <div class="card"><table><tbody>${rows.map(([k, v]) => `<tr><th>${k}</th><td>${esc(v)}</td></tr>`).join('')}</tbody></table>
+    <p class="small muted">Read from your photos. Check the card number and variant against the card before relying on it.</p></div>
+    ${c.slab && c.slab.cert && CARD_CERT_URL(c.slab.service, c.slab.cert) ? `<a class="btn btn-ghost btn-wide" href="${CARD_CERT_URL(c.slab.service, c.slab.cert)}" target="_blank" rel="noopener">Verify cert on ${esc(c.slab.service)} ↗</a>` : ''}`;
+  }
   const rows = [['Country', c.country], ['Denomination', c.denomination], ['Year', c.year], ['Mint', c.mint],
     ['Composition', c.composition], ['Fineness', c.fineness], ['Weight', c.weight],
     [c.agw ? 'AGW' : 'ASW', (c.agw || c.asw) ? (c.agw || c.asw) + ' oz' : ''], ['Mintage', c.mintage], ['Diameter', c.diameter],
@@ -1418,7 +1456,7 @@ screens.purchase = () => {
   if (!P.items.length) return head + `
     <div class="card"><p>No coins yet. Scan a coin, then tap <b>Save to a lot</b> and pick ${esc(P.name)}.</p></div>
     <button class="btn-primary btn-wide" data-a="scan">Scan a coin</button>
-    <button class="btn-ghost btn-wide" data-a="go" data-s="quick">+ Quick add bullion or junk silver</button>` + del;
+    ${cardsMode() ? '' : '<button class="btn-ghost btn-wide" data-a="go" data-s="quick">+ Quick add bullion or junk silver</button>'}` + del;
   const T = lotTotals();
   const rows = lotRows(P, T);
   const buyIdx = P.items.map((it, i) => i).filter((i) => P.items[i].status !== 'maybe');
@@ -1462,7 +1500,7 @@ screens.purchase = () => {
     <span class="eyebrow">${P.status === 'bought' ? 'Not bought' : 'Maybe · set aside'} · ${maybeIdx.length} · not in the total</span>
     ${maybeIdx.map((i) => itemRow(P, rows[i], i, T)).join('')}
   </div>` : ''}
-  <div class="grid2"><button class="btn-primary" data-a="scan">Scan a coin</button><button class="btn-ghost" data-a="go" data-s="quick">+ Quick add</button></div>
+  ${cardsMode() ? '<button class="btn-primary btn-wide" data-a="scan">Scan a card</button>' : '<div class="grid2"><button class="btn-primary" data-a="scan">Scan a coin</button><button class="btn-ghost" data-a="go" data-s="quick">+ Quick add</button></div>'}
   ${del}`;
 };
 
@@ -1592,7 +1630,12 @@ async function makeListing() {
   const c = S.coin;
   const a = analyze(c, S.grades, S.confirmed, S.cost, null, S.expSale);
   S.listing = { loading: true }; S.copied = ''; go('listing');
-  const payload = {
+  const payload = isCard(c) ? {
+    kind: 'card', name: c.name, game: c.game, year: c.year, brand: c.brand, set: c.set, card_number: c.card_number,
+    subject: c.subject, variant: c.variant, serial: c.serial, language: c.language, rookie: c.rookie, slab: c.slab || null,
+    rarity: c.rarity ? `${RARITY[c.rarity.level] || ''}. ${c.rarity.note}` : null,
+    grade: c.slab ? null : (a.confirmed ? (CARD_GRADE_NAME[a.grades[0]] || a.grades[0]) + ' (raw, seller\'s opinion)' : null),
+  } : {
     name: c.name, country: c.country, denomination: c.denomination, year: c.year, mint: c.mint,
     variety: c.gsVariety != null && c.gsVarieties ? c.gsVarieties[c.gsVariety].name : null,
     km: c.km, composition: c.composition, fineness: c.fineness, weight: c.weight, diameter: c.diameter,
@@ -1865,7 +1908,7 @@ function sendFeedback(patch) {
   }).catch(() => {});
 }
 async function serverJson(hints, images, signal) {
-  const payload = { hints: hints || '', images: await Promise.all(images.map(blobToBase64)), spot: { silver: spot().silver, gold: spot().gold } };
+  const payload = { hints: hints || '', images: await Promise.all(images.map(blobToBase64)), spot: { silver: spot().silver, gold: spot().gold }, mode: cardsMode() ? 'cards' : 'coins' };
   const res = await fetch('/api/identify', {
     method: 'POST', signal,
     headers: { 'Content-Type': 'application/json', 'X-Access-Code': store.get('cs.code', ''), 'X-Tester': store.get('cs.tester', ''), ...(store.get('cs.fast', false) ? { 'X-Fast': '1' } : {}) },
@@ -1927,6 +1970,13 @@ Rules:
 function hintsFromFields() {
   if (!S.fields) return '';
   const f = S.fields, parts = [];
+  if (cardsMode()) {
+    if (f.country) parts.push('Game or sport: ' + f.country);
+    if (f.denomination) parts.push('Set: ' + f.denomination);
+    if (f.year) parts.push('Year: ' + f.year);
+    if (f.mint) parts.push('Card number: ' + f.mint);
+    return parts.join('\n');
+  }
   if (f.country) parts.push('Country: ' + f.country);
   if (f.denomination) parts.push('Denomination: ' + f.denomination);
   if (f.year) parts.push('Year: ' + f.year);
@@ -1956,6 +2006,36 @@ function normAiValue(v) {
     out[g] = out[g] ? [Math.min(out[g][0], +r[0]), Math.max(out[g][1], +r[1])] : [+r[0], +r[1]];
   }
   return out;
+}
+// Cards mode: map the card answer onto the same shape the price screens use.
+function cardFromAI(r) {
+  const fieldName = { game_or_sport: 'country', set: 'denomination', year: 'year', card_number: 'mint' };
+  const av = {};
+  for (const [k, v] of Object.entries(r.rough_value_usd || {})) {
+    if (!Array.isArray(v) || v.length !== 2 || !(+v[1] > 0)) continue;
+    const kk = String(k).toUpperCase();
+    const key = CARD_GRADES.includes(kk) ? kk : /GRAD|PSA|BGS|CGC|SGC|\d/.test(kk) ? 'GRADED' : /NEAR|MINT/.test(kk) ? 'NM' : /LIGHT/.test(kk) ? 'LP' : /MODER/.test(kk) ? 'MP' : /HEAV/.test(kk) ? 'HP' : /DAMAG/.test(kk) ? 'DMG' : null;
+    if (key) av[key] = av[key] ? [Math.min(av[key][0], +v[0]), Math.max(av[key][1], +v[1])] : [+v[0], +v[1]];
+  }
+  const g = r.graded && (r.graded.company || r.graded.grade) ? { service: String(r.graded.company || 'Graded'), grade: String(r.graded.grade || ''), cert: String(r.graded.cert || ''), label_text: String(r.graded.label_text || '') } : null;
+  const lvl = r.notable && r.notable.level;
+  const sc = String(r.suggested_condition || '').toUpperCase();
+  return {
+    id: 'card-' + Date.now(), source: 'ai', kind: 'card',
+    name: r.card_name || [r.year, r.set, r.subject, r.card_number ? '#' + r.card_number : ''].filter(Boolean).join(' ') || 'Unknown card',
+    category: r.category || '', game: r.game_or_sport || '', brand: r.brand || '', set: r.set || '', card_number: r.card_number || '',
+    subject: r.subject || '', variant: r.variant || '', serial: r.serial_number || '', language: r.language || '', rookie: !!r.rookie,
+    // Generic fields reused by the check-details screen: country=game, denomination=set, year, mint=card number.
+    country: r.game_or_sport || '', denomination: r.set || '', year: r.year || '', mint: r.card_number || '',
+    uncertain: (r.uncertain_fields || []).map((f) => fieldName[f]).filter(Boolean),
+    suggestedGrades: CARD_GRADES.includes(sc) ? [sc] : [], gradeSensitive: false, skipGrade: false,
+    cpg: {}, sales: [], asw: null, agw: null,
+    alternates: (r.candidates || []).map((x) => (x && x.card_name ? { coin_name: x.card_name, why: x.why || '' } : null)).filter(Boolean).slice(0, 4),
+    aiValue: av, slab: g, gradeNote: r.condition_note || '',
+    confidence: ['High', 'Medium', 'Low'].includes(r.confidence) ? r.confidence : 'Medium',
+    photoFeedback: r.photo_feedback || '',
+    rarity: lvl && RARITY[lvl] ? { level: lvl, note: String(r.notable.note || ''), check: String(r.notable.check || '') } : (r.rookie ? { level: 'rookie', note: 'Rookie card.', check: '' } : null),
+  };
 }
 function coinFromAI(r) {
   const fieldName = { mint_mark: 'mint', year: 'year', country: 'country', denomination: 'denomination' };
@@ -2024,12 +2104,12 @@ async function runIdentify(hints, opts = {}) {
       : await sample.json(ID_PROMPT(hints), { images: images.length ? images : undefined, signal: idCtl.signal, modelTier: 'default', cache: false });
     S.idSeconds = Math.round((Date.now() - t0) / 1000);
     S.ai = r; S.idDetail = ''; S.scanId = r.scan_id || null;
-    if (!r || r.identified === false || !r.coin_name) {
+    if (!r || r.identified === false || !(r.coin_name || r.card_name)) {
       S.idError = 'We couldn\'t tell what this coin is from these photos.';
       return go('idfail');
     }
-    S.coin = coinFromAI(r); S.histAt = Date.now();
-    fetchLookup(S.coin, r);
+    if (cardsMode()) { S.coin = cardFromAI(r); S.histAt = Date.now(); }
+    else { S.coin = coinFromAI(r); S.histAt = Date.now(); fetchLookup(S.coin, r); }
     S.fields = { country: S.coin.country, denomination: S.coin.denomination, year: S.coin.year, mint: S.coin.mint };
     S.expSale = ''; S.cost = ''; S.candidates = false; S.manual = false;
     S.log.push({ at: new Date().toISOString(), hints: hints || '', result: r.coin_name, confidence: r.confidence, seconds: S.idSeconds });
@@ -2051,6 +2131,11 @@ async function runIdentify(hints, opts = {}) {
 // Go to the price screen with a sensible grade already chosen; the dealer can tap another grade there.
 function enterPrice() {
   const c = S.coin;
+  if (isCard(c)) {
+    if (c.slab) { S.grades = ['GRADED']; S.confirmed = true; }
+    else { S.grades = [(c.suggestedGrades || [])[0] || 'NM']; S.confirmed = false; }
+    return go('money');
+  }
   const sg = c.slab && GRADE_MAP(c.slab.grade);
   if (c.skipGrade) { S.grades = ['ANY']; S.confirmed = true; }
   else if (sg) { S.grades = [sg]; S.confirmed = true; }
@@ -2058,6 +2143,19 @@ function enterPrice() {
   return go('money');
 }
 const seasoned = () => S.history.length >= 5;
+const cardsMode = () => S.settings.mode === 'cards';
+const isCard = (c) => !!(c && c.kind === 'card');
+const CARD_GRADES = ['DMG', 'HP', 'MP', 'LP', 'NM'];
+const CARD_GRADE_NAME = { NM: 'Near Mint', LP: 'Lightly Played', MP: 'Moderately Played', HP: 'Heavily Played', DMG: 'Damaged', GRADED: 'Graded' };
+const isTCG = (c) => isCard(c) && (c.category === 'TCG' || /pok|magic|yu-?gi|one piece|lorcana|digimon|flesh|dragon ball|weiss|union arena|star wars unlimited/i.test(c.game || ''));
+const CARD_CERT_URL = (svc, cert) => {
+  const s = String(svc || '').toUpperCase(), n = encodeURIComponent(cert || '');
+  if (/PSA/.test(s)) return `https://www.psacard.com/cert/${n}`;
+  if (/CGC/.test(s)) return `https://www.cgccards.com/certlookup/${n}/`;
+  if (/BGS|BECKETT/.test(s)) return 'https://www.beckett.com/grading/card-lookup';
+  if (/SGC/.test(s)) return 'https://gosgc.com/cert-code-lookup';
+  return null;
+};
 function startIdentify() { runIdentify(''); }
 function waitForFiles() {
   return new Promise((resolve) => {
@@ -2140,6 +2238,9 @@ document.addEventListener('click', (e) => {
     }
     return enterPrice();
   }
+  if (a === 'modeAsk') { S.modeAsk = true; return render(); }
+  if (a === 'modeCancel') { S.modeAsk = false; return render(); }
+  if (a === 'modeSwitch') { S.settings.mode = cardsMode() ? 'coins' : 'cards'; S.modeAsk = false; save(); return render(); }
   if (a === 'lotsClearAsk') { S.confirmLotsClear = true; return render(); }
   if (a === 'lotsClearCancel') { S.confirmLotsClear = false; return render(); }
   if (a === 'lotsClear') { S.lots = []; S.purchase = null; S.sessionLot = null; S.added = false; S.confirmLotsClear = false; save(); return render(); }

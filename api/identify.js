@@ -61,6 +61,48 @@ Rules:
 - Mint marks and assayer initials must agree: on Spanish colonial and Latin American coins, check that the assayer initials belong to that mint and year (e.g. 1769 Mexico City is Mo-MF; JM is a Lima assayer). If they conflict, trust the clearer of the two, list mint_mark as uncertain, and lower confidence.
 - For worn dates, give the most likely year but list year in uncertain_fields and put other plausible dates in candidates.`;
 
+// Cards mode: trading cards (Pokémon, Magic, Yu-Gi-Oh!, One Piece, Lorcana...) and sports cards, raw or graded.
+const buildCardPrompt = (hints, n) => `You are an expert trading card and sports card dealer helping a reseller identify a card.
+${n >= 2 ? 'Image 1 is the front; image 2 is the back.' : n === 1 ? 'The image shows one side of the card.' : 'No photos: identify from the dealer\'s details only.'}
+The card may be raw, in a sleeve or top-loader, or graded in a PSA, BGS (Beckett), CGC, SGC, TAG or other slab. If graded, read the label exactly: company, grade, cert number, label text.
+
+Read the set symbol or logo, the card number (e.g. "4/102", "#US1", "SV049"), the year and copyright line, the player or character name, and any serial number (e.g. "23/99"). Identify the exact variant or parallel when you can see it (e.g. Holo, Reverse Holo, 1st Edition, Shadowless, Refractor, Prizm Silver, Gold /10). Never invent a parallel or serial number you cannot see. If you cannot read something, list it in uncertain_fields and lower your confidence. Prefer an honest "Low" over a confident wrong answer.
+${hints ? '\nThe dealer has corrected or supplied these details; treat them as correct unless the photos clearly contradict them:\n' + hints + '\n' : ''}
+Reply with only this JSON object:
+{
+ "identified": true,
+ "card_name": "e.g. 1999 Pokemon Base Set Charizard 4/102 Holo, or 2018 Topps Update Shohei Ohtani #US1 Rookie",
+ "category": "TCG" or "Sports" or "Non-sport",
+ "game_or_sport": "e.g. Pokemon, Magic: The Gathering, Yu-Gi-Oh!, One Piece, Baseball, Basketball, Football",
+ "year": "4-digit year",
+ "brand": "e.g. Topps, Panini, Wizards of the Coast, The Pokemon Company",
+ "set": "e.g. Base Set, Topps Update, Prizm",
+ "card_number": "",
+ "subject": "player or character",
+ "variant": "e.g. Base, Holo, Reverse Holo, 1st Edition, Silver Prizm",
+ "serial_number": "e.g. 23/99, else \\"\\"",
+ "language": "English",
+ "rookie": false,
+ "graded": null,
+ "suggested_condition": "NM",
+ "condition_note": "one short sentence on visible wear (corners, edges, surface, centering)",
+ "uncertain_fields": [],
+ "confidence": "High",
+ "candidates": [{"card_name": "", "why": ""}],
+ "rough_value_usd": {"NM": [10, 20]},
+ "notable": {"level": "", "note": "", "check": ""},
+ "photo_feedback": ""
+}
+Rules:
+- identified: false if you cannot tell what the card is.
+- uncertain_fields uses only: game_or_sport, set, year, card_number.
+- graded: null for raw cards, or {"company": "PSA", "grade": "10", "cert": "", "label_text": ""}. Copy numbers exactly; "" if unreadable.
+- suggested_condition for raw cards: one of NM, LP, MP, HP, DMG (near mint, lightly/moderately/heavily played, damaged). Judge from corners, edges, surface and centering. For graded cards use "".
+- rough_value_usd: typical recent US sale prices for THIS exact card and variant, from general knowledge, only where you have a reasonable sense; otherwise {}. For raw cards use condition keys (NM, LP, MP, HP, DMG) for the conditions in question; for graded cards use the key "GRADED" for this card at its slab grade. Card prices change fast, so treat this as a rough guide; the dealer checks sold comps.
+- notable: flag cards a reseller must not undervalue. level is "rookie" (a true rookie card), "numbered" (serial-numbered), "short_print" (short print, SSP or case hit), "key" (a chase card, key card of the set or iconic card), "error" (a known error or misprint variety), or "" for ordinary cards. note: one short sentence on why. check: one short sentence on what to verify (e.g. reprint vs original, fake slab, trimmed edges). Use "" when level is "".
+- candidates: 2 to 3 OTHER likely cards or variants (e.g. other parallels, reprints, 1st Edition vs Unlimited), each with a short reason.
+- Keep it short: condition_note under 12 words; each candidate "why" under 10 words; photo_feedback under 12 words. No text outside the JSON.`;
+
 function extractJson(text) {
   try { return JSON.parse(text); } catch (_) {}
   const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/);
@@ -104,7 +146,7 @@ export default async function handler(req, res) {
 
   const content = [
     ...images.map((data) => ({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data } })),
-    { type: 'text', text: buildPrompt(hints, images.length, spot) },
+    { type: 'text', text: body.mode === 'cards' ? buildCardPrompt(hints, images.length) : buildPrompt(hints, images.length, spot) },
   ];
 
   let r;
@@ -140,6 +182,6 @@ export default async function handler(req, res) {
   const text = (out.content || []).filter((c) => c.type === 'text').map((c) => c.text).join('');
   const json = extractJson(text);
   if (!json) { await log({ error: 'invalid_json', result: { raw: text.slice(0, 2000) } }); return res.status(502).json({ error: 'invalid_json' }); }
-  const scanId = await log({ coin_name: json.coin_name || null, confidence: json.confidence || null, result: { ...json, _model: model, _claude_ms: claudeMs } });
+  const scanId = await log({ coin_name: json.coin_name || json.card_name || null, confidence: json.confidence || null, result: { ...json, _model: model, _claude_ms: claudeMs } });
   return res.status(200).json({ ...json, scan_id: scanId, claude_ms: claudeMs, model });
 }
