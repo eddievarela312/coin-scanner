@@ -154,6 +154,21 @@ tr.hl td{background:var(--accent-soft)}
 .note[open] .nc{transform:rotate(90deg)}
 .note .nb{padding:0 12px 12px 40px;display:flex;flex-direction:column;gap:6px;font-size:.88rem}
 .notes{display:flex;flex-direction:column;gap:8px}
+.gtbl{padding:0}
+.gtbl summary{list-style:none;display:flex;align-items:center;gap:8px;padding:12px 14px;cursor:pointer;min-height:48px}
+.gtbl summary::-webkit-details-marker{display:none}
+.gtbl summary .eyebrow{white-space:nowrap}
+.gtbl summary .small{margin-left:auto;text-align:right}
+.gtbl .nc{transition:transform .15s;font-size:1.1rem}
+.gtbl[open] .nc{transform:rotate(90deg)}
+.gtbody{display:flex;flex-direction:column;gap:2px;padding:0 10px 12px}
+.gtrow{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 6px;border-radius:8px;font-size:.92rem;background:none;border:0;color:inherit;font:inherit;text-align:left;width:100%;min-height:40px;border-bottom:1px solid var(--line)}
+button.gtrow{cursor:pointer}
+.gtrow.on{background:var(--accent-soft);border-bottom-color:transparent}
+.gtrow .num{font-weight:700;white-space:nowrap}
+.gtag{font-size:.6rem;padding:1px 6px;margin-left:4px;vertical-align:1px}
+.gthead{margin:8px 6px 2px}
+.gtlikely{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px;border-radius:10px;background:var(--accent-soft);margin-bottom:4px}
 .lotpick{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:12px;overflow:hidden}
 .lotpick button{display:flex;align-items:center;gap:10px;min-height:46px;padding:8px 12px;border:0;border-bottom:1px solid var(--line);border-radius:0;background:transparent;color:var(--ink);font-weight:600;text-align:left}
 .lotpick button:last-child{border-bottom:0}
@@ -1097,6 +1112,7 @@ screens.money = () => {
     <div class="card tapcard${S.tbOpen ? ' open' : ''}" id="tbcard" data-a="toggleTb" role="button" tabindex="0" aria-expanded="${S.tbOpen ? 'true' : 'false'}">${tbInner(c, a)}</div>
   </div>
   ${S.tbOpen ? `<div class="card" id="tbpanel">${tbPanel(c, a)}</div>` : ''}`}
+  ${gradeTable(c, a)}
   ${isCard(c) ? '' : `<div class="row" style="gap:18px;margin-top:-4px">
     <span class="small"><span class="muted">Melt</span> <b class="num">${a.melt > 0 ? money(a.melt) : 'none'}</b></span>
     <span class="small"><span class="muted">CPG</span> ${c.countermark && !CM_RE.test(c.gsName || '') ? '<b>n/a for this countermark</b>' : a.cpg.length ? `<b class="num">${a.cpg.map(money).join('–')}</b> <a href="https://www.greysheet.com" target="_blank" rel="noopener" style="color:var(--accent)">via CDN</a>` : `<b>${c.lookupPending ? 'loading…' : 'not found'}</b>`}</span>
@@ -1237,6 +1253,46 @@ function gradeRow(c, a) {
     <div class="gchips" role="group" aria-label="Grade">${GRADES.map((g) => `<button class="${S.grades.includes(g) ? (a.confirmed ? 'on' : 'sugg on') : sugg.includes(g) ? 'sugg' : ''}" data-a="pickGrade" data-g="${g}">${g}</button>`).join('')}</div>`;
 }
 
+// "PSA10", "psa 10 gem mint" -> "PSA 10"; "BGS 9.5" stays.
+function gradeKey(k) {
+  const m = String(k).toUpperCase().match(/(PSA|BGS|CGC|SGC|BECKETT)?\s*(\d+(?:\.\d)?)/);
+  if (!m) return String(k).toUpperCase().trim();
+  return `${m[1] === 'BECKETT' ? 'BGS' : m[1] || 'PSA'} ${m[2]}`;
+}
+const GRADE_WORD = { VG: 'Very Good', F: 'Fine', VF: 'Very Fine', XF: 'Extremely Fine', AU: 'About Unc.', UNC: 'Uncirculated' };
+// "Value by grade" dropdown: what this coin or card is worth at each grade.
+function gradeTable(c, a) {
+  if (c.skipGrade || c.source === 'quick') return '';
+  const rows = [];
+  const row = (label, sub, val, on, tag, g) => rows.push(`<${g ? `button data-a="pickGrade" data-g="${g}"` : 'div'} class="gtrow${on ? ' on' : ''}"><span><b>${label}</b>${sub ? ` <span class="muted">${sub}</span>` : ''}${tag ? ` <span class="pill neutral gtag">${tag}</span>` : ''}</span><span class="num">${val}</span></${g ? 'button' : 'div'}>`);
+  let est = false;
+  if (isCard(c)) {
+    const av = c.aiValue || {}, gv = c.gradedValues || {};
+    const raw = CARD_GRADES.slice().reverse().filter((g) => av[g]);
+    const graded = Object.keys(gv).sort((x, y) => parseFloat(y.split(' ')[1]) - parseFloat(x.split(' ')[1]) || x.localeCompare(y));
+    if (raw.length + graded.length < 2) return '';
+    est = true;
+    const own = c.slab ? gradeKey(`${c.slab.service} ${c.slab.grade}`) : '';
+    if (raw.length) rows.push('<span class="eyebrow gthead">Raw</span>');
+    for (const g of raw) row(g, CARD_GRADE_NAME[g], range$({ low: av[g][0], high: av[g][1] }), !c.slab && S.grades.includes(g), (c.suggestedGrades || []).includes(g) && !c.slab ? 'likely' : '', c.slab ? '' : g);
+    if (graded.length) rows.push('<span class="eyebrow gthead">Graded</span>');
+    for (const k of graded) row(k, '', range$({ low: gv[k][0], high: gv[k][1] }), k === own, k === own ? 'this card' : '', '');
+  } else {
+    const slabG = c.slab && GRADE_MAP(c.slab.grade);
+    for (const g of GRADES) {
+      const r = analyze(c, [g], true, '', null, '').range;
+      if (!r || r.source === 'dealer' || r.aiFrom) continue;
+      if (r.source === 'ai') est = true;
+      row(g, GRADE_WORD[g], range$(r), S.grades.includes(g), (c.suggestedGrades || []).includes(g) ? 'likely' : '', slabG ? '' : g);
+    }
+    if (rows.length < 2) return '';
+  }
+  const likely = isCard(c) && c.estimatedGrade ? `<div class="gtlikely"><span class="small muted">Likely grade if you sent it in</span><b>${esc(c.estimatedGrade)}</b></div>` : '';
+  return `<details class="card gtbl" id="gradetbl"${S.gradeTblOpen ? ' open' : ''}><summary><span class="eyebrow" style="margin:0">Value by grade</span><span class="small muted">${isCard(c) && c.estimatedGrade ? `Likely ${esc(c.estimatedGrade)}` : 'See all grades'}</span><span class="nc" aria-hidden="true">›</span></summary>
+    <div class="gtbody">${likely}${rows.join('')}
+    <span class="small muted">${est ? 'Rough estimates, not sales data. ' : ''}${isCard(c) ? 'Grading costs money and the result isn\u2019t guaranteed. ' : ''}Check eBay sold comps before relying on these.</span></div></details>`;
+}
+
 // Collector view: just the value, how sure we are, and where it came from.
 function collectorValue(c, a) {
   const src = a.limited ? 'Our estimate, not sales data' : a.range ? shortBasis(a.range) : '';
@@ -1251,6 +1307,7 @@ function goodToKnow(c, a) {
   const items = [];
   if (isCard(c) && c.slab) items.push(`Graded ${esc(c.slab.service)} ${esc(c.slab.grade)}${c.slab.cert ? ` · cert ${esc(c.slab.cert)}` : ''}${c.slab.cert && CARD_CERT_URL(c.slab.service, c.slab.cert) ? ` · <a href="${CARD_CERT_URL(c.slab.service, c.slab.cert)}" target="_blank" rel="noopener" style="color:var(--accent)">verify</a>` : ''}`);
   if (c.gradeNote) items.push(esc(c.gradeNote));
+  if (isCard(c) && c.estimatedGrade) items.push(`If you sent it to be graded, it would most likely come back around <b>${esc(c.estimatedGrade)}</b>.`);
   for (const tip of c.tips || []) items.push(esc(tip));
   if (!isCard(c) && a.melt > 0) items.push(`Metal value today: ${money(a.melt)}`);
   if (!items.length) return '';
@@ -2050,14 +2107,21 @@ function normAiValue(v) {
 // Cards mode: map the card answer onto the same shape the price screens use.
 function cardFromAI(r) {
   const fieldName = { game_or_sport: 'country', set: 'denomination', year: 'year', card_number: 'mint' };
-  const av = {};
+  const av = {}, gv = {};
+  const merge = (o, key, v) => { o[key] = o[key] ? [Math.min(o[key][0], +v[0]), Math.max(o[key][1], +v[1])] : [+v[0], +v[1]]; };
   for (const [k, v] of Object.entries(r.rough_value_usd || {})) {
     if (!Array.isArray(v) || v.length !== 2 || !(+v[1] > 0)) continue;
-    const kk = String(k).toUpperCase();
-    const key = CARD_GRADES.includes(kk) ? kk : /GRAD|PSA|BGS|CGC|SGC|\d/.test(kk) ? 'GRADED' : /NEAR|MINT/.test(kk) ? 'NM' : /LIGHT/.test(kk) ? 'LP' : /MODER/.test(kk) ? 'MP' : /HEAV/.test(kk) ? 'HP' : /DAMAG/.test(kk) ? 'DMG' : null;
-    if (key) av[key] = av[key] ? [Math.min(av[key][0], +v[0]), Math.max(av[key][1], +v[1])] : [+v[0], +v[1]];
+    const kk = String(k).toUpperCase().trim();
+    const raw = CARD_GRADES.includes(kk) ? kk : /^GRAD/.test(kk) ? 'GRADED' : /PSA|BGS|CGC|SGC|\d/.test(kk) ? null : /NEAR|MINT/.test(kk) ? 'NM' : /LIGHT/.test(kk) ? 'LP' : /MODER/.test(kk) ? 'MP' : /HEAV/.test(kk) ? 'HP' : /DAMAG/.test(kk) ? 'DMG' : null;
+    if (raw) merge(av, raw, v);
+    else if (/PSA|BGS|CGC|SGC|\d/.test(kk)) merge(gv, gradeKey(kk), v);
   }
   const g = r.graded && (r.graded.company || r.graded.grade) ? { service: String(r.graded.company || 'Graded'), grade: String(r.graded.grade || ''), cert: String(r.graded.cert || ''), label_text: String(r.graded.label_text || '') } : null;
+  // A slabbed card is priced at its own slab grade.
+  if (g && !av.GRADED) {
+    const own = gv[gradeKey(`${g.service} ${g.grade}`)] || (Object.keys(gv).length === 1 ? Object.values(gv)[0] : null);
+    if (own) av.GRADED = own;
+  }
   const lvl = r.notable && r.notable.level;
   const sc = String(r.suggested_condition || '').toUpperCase();
   return {
@@ -2071,7 +2135,8 @@ function cardFromAI(r) {
     suggestedGrades: CARD_GRADES.includes(sc) ? [sc] : [], gradeSensitive: false, skipGrade: false,
     cpg: {}, sales: [], asw: null, agw: null,
     alternates: (r.candidates || []).map((x) => (x && x.card_name ? { coin_name: x.card_name, why: x.why || '' } : null)).filter(Boolean).slice(0, 4),
-    aiValue: av, slab: g, gradeNote: r.condition_note || '',
+    aiValue: av, gradedValues: gv, slab: g, gradeNote: r.condition_note || '',
+    estimatedGrade: !g && typeof r.estimated_grade === 'string' ? r.estimated_grade.trim().slice(0, 40) : '',
     confidence: ['High', 'Medium', 'Low'].includes(r.confidence) ? r.confidence : 'Medium',
     photoFeedback: r.photo_feedback || '',
     tips: Array.isArray(r.collector_tips) ? r.collector_tips.filter((x) => typeof x === 'string' && x.trim()).slice(0, 3) : [],
@@ -2430,7 +2495,7 @@ document.addEventListener('touchend', (e) => {
   const n = (S.tourStep || 0) + (dx < 0 ? 1 : -1);
   if (n >= 0 && n < TOUR.length) { S.tourStep = n; render(); }
 }, { passive: true });
-document.addEventListener('toggle', (e) => { if (e.target && e.target.id === 'more') S.moreOpen = e.target.open; if (e.target && e.target.id === 'lotmore') S.lotMoreOpen = e.target.open; }, true);
+document.addEventListener('toggle', (e) => { if (e.target && e.target.id === 'more') S.moreOpen = e.target.open; if (e.target && e.target.id === 'lotmore') S.lotMoreOpen = e.target.open; if (e.target && e.target.id === 'gradetbl') S.gradeTblOpen = e.target.open; }, true);
 
 document.addEventListener('input', (e) => {
   const el = e.target;

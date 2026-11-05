@@ -53,7 +53,7 @@ Rules:
 - slab: null, or {"service": "PCGS", "grade": "MS63", "cert": "", "label_text": "", "pcgs_number": "", "ngc_id": ""}. On PCGS labels the coin number is printed with the cert (e.g. "7296.63/12345678": coin number 7296, grade 63). Copy numbers exactly as printed; leave "" if not readable.
 - suggested_grades: one or two adjacent grades from VG, F, VF, XF, AU, UNC.
 - candidates: 2 to 3 OTHER likely coins, including close dates, mint marks and varieties, each with a short reason.
-- rough_value_usd: must be for THIS exact date and mint, not the type in general (key and scarce dates sell well above common dates). Approximate typical US retail ranges for the grades in question, from general knowledge, only where you have a reasonable sense; otherwise {}. These are shown to the dealer labeled as rough estimates.
+- rough_value_usd: must be for THIS exact date and mint, not the type in general (key and scarce dates sell well above common dates). Approximate typical US retail ranges for each grade from VG to UNC (keys VG, F, VF, XF, AU, UNC) so the owner can compare grades, from general knowledge, only where you have a reasonable sense; skip grades you have no sense of; otherwise {}. These are shown to the dealer labeled as rough estimates.
 - weights in grams, ASW/AGW in troy ounces.
 - collector_tips: 1 to 3 short, specific tips an owner should know about THIS coin (e.g. whether grading is likely worth it, the counterfeit or variety to check, don't clean it). Each under 18 words. No generic advice.
 - Keep it short: this JSON is read on a phone mid-negotiation. grade_note under 12 words; each candidate "why" under 10 words; photo_feedback under 12 words. No text outside the JSON.
@@ -91,7 +91,8 @@ Reply with only this JSON object:
  "uncertain_fields": [],
  "confidence": "High",
  "candidates": [{"card_name": "", "why": ""}],
- "rough_value_usd": {"NM": [10, 20]},
+ "rough_value_usd": {"NM": [10, 20], "LP": [6, 12], "PSA 10": [60, 90], "PSA 9": [25, 35]},
+ "estimated_grade": "e.g. PSA 8-9 for a raw card, else \"\"",
  "notable": {"level": "", "note": "", "check": ""},
  "collector_tips": [],
  "photo_feedback": ""
@@ -101,7 +102,8 @@ Rules:
 - uncertain_fields uses only: game_or_sport, set, year, card_number.
 - graded: null for raw cards, or {"company": "PSA", "grade": "10", "cert": "", "label_text": ""}. Copy numbers exactly; "" if unreadable.
 - suggested_condition for raw cards: one of NM, LP, MP, HP, DMG (near mint, lightly/moderately/heavily played, damaged). Judge from corners, edges, surface and centering. For graded cards use "".
-- rough_value_usd: typical recent US sale prices for THIS exact card and variant, from general knowledge, only where you have a reasonable sense; otherwise {}. For raw cards use condition keys (NM, LP, MP, HP, DMG) for the conditions in question; for graded cards use the key "GRADED" for this card at its slab grade. Card prices change fast, so treat this as a rough guide; the dealer checks sold comps.
+- rough_value_usd: typical recent US sale prices for THIS exact card and variant, from general knowledge, only where you have a reasonable sense; otherwise {}. Give raw condition keys (NM, LP, MP, HP) and graded keys ("PSA 10", "PSA 9", "PSA 8", "PSA 7") so the owner can compare grades; skip any you have no sense of. For a graded card also include its own slab grade key (e.g. "BGS 9.5" or "CGC 10").
+- estimated_grade: for a raw card, the grade range a major grader would most likely give based on the photos (e.g. "PSA 7-8"), judging centering, corners, edges and surface; "" for graded cards or if the photos are too poor to judge. Card prices change fast, so treat this as a rough guide; the dealer checks sold comps.
 - notable: flag cards a reseller must not undervalue. level is "rookie" (a true rookie card), "numbered" (serial-numbered), "short_print" (short print, SSP or case hit), "key" (a chase card, key card of the set or iconic card), "error" (a known error or misprint variety), or "" for ordinary cards. note: one short sentence on why. check: one short sentence on what to verify (e.g. reprint vs original, fake slab, trimmed edges). Use "" when level is "".
 - collector_tips: 1 to 3 short, specific tips an owner should know about THIS card (e.g. whether grading is likely worth it at this condition and value, how to tell an original from a reprint or fake, which variant to double-check). Each under 18 words. No generic advice.
 - candidates: 2 to 3 OTHER likely cards or variants (e.g. other parallels, reprints, 1st Edition vs Unlimited), each with a short reason.
