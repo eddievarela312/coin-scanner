@@ -2182,6 +2182,7 @@ const ID_ERRORS = {
   network: 'No connection to the server. Check your signal and try again.',
   no_credit: 'Your Anthropic account has no credit. Add credit at console.anthropic.com under Billing, then scan again.',
   not_configured: 'The app\'s API key isn\'t set up yet. Add ANTHROPIC_API_KEY in Vercel settings and redeploy.',
+  key_rejected: 'Anthropic rejected the app\'s API key. Make a new key at console.anthropic.com, paste it into ANTHROPIC_API_KEY in Vercel, then redeploy.',
 };
 
 async function runIdentify(hints, opts = {}) {

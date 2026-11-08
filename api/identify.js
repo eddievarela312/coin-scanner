@@ -173,7 +173,11 @@ export default async function handler(req, res) {
     return res.status(502).json({ error: 'upstream_error', detail });
   }
   if (r.status === 429) return res.status(429).json({ error: 'rate_limited' });
-  if (r.status === 401 || r.status === 403) return res.status(500).json({ error: 'not_configured' });
+  if (r.status === 401 || r.status === 403) {
+    let detail = ''; try { detail = (await r.json()).error.message || ''; } catch (_) {}
+    await log({ error: `Claude ${r.status}: ${detail}` });
+    return res.status(500).json({ error: 'key_rejected', detail: `Anthropic said (${r.status}): ${detail || 'key not accepted'}` });
+  }
   if (!r.ok) {
     const raw = await r.text();
     let detail = raw.slice(0, 300);
